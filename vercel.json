@@ -1,0 +1,12 @@
+{
+  "crons": [
+    { "path": "/api/agent/daily-run",  "schedule": "0 8 * * *"  },
+    { "path": "/api/agent/daily-run",  "schedule": "0 18 * * *" },
+    { "path": "/api/agent/feedback",   "schedule": "0 14 * * *" },
+    { "path": "/api/agent/feedback",   "schedule": "0 0 * * *"  }
+  ],
+  "functions": {
+    "app/api/agent/daily-run/route.ts": { "maxDuration": 300 },
+    "app/api/agent/feedback/route.ts":  { "maxDuration": 60  }
+  }
+}
