@@ -9,7 +9,7 @@
 
 import fs   from 'fs';
 import path from 'path';
-import { dataPath } from './data-dir';
+import { dataPath, IS_VERCEL } from './data-dir';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ const FETCH_TIMEOUT  = 8_000;
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
 function cachePath(): string {
-  if (process.env.NODE_ENV === 'production') return '/tmp/trend-cache.json';
+  if (IS_VERCEL) return '/tmp/trend-cache.json';
   const p = dataPath('trend-cache.json');
   fs.mkdirSync(path.dirname(p), { recursive: true });
   return p;

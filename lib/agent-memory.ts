@@ -12,7 +12,7 @@
 import fs   from 'fs';
 import path from 'path';
 import type { Publication } from './agent-store';
-import { dataPath } from './data-dir';
+import { dataPath, IS_VERCEL } from './data-dir';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,7 +54,7 @@ const DEFAULT_MEMORY: AgentMemory = {
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
 function memoryPath(): string {
-  if (process.env.NODE_ENV === 'production') return '/tmp/agent-memory.json';
+  if (IS_VERCEL) return '/tmp/agent-memory.json';
   const p = dataPath('agent-memory.json');
   fs.mkdirSync(path.dirname(p), { recursive: true });
   return p;

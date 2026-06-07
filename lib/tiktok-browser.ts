@@ -12,7 +12,7 @@
 import fs   from 'fs';
 import path from 'path';
 import os   from 'os';
-import { dataPath } from './data-dir';
+import { dataPath, IS_VERCEL } from './data-dir';
 
 // Lazy-load playwright so it doesn't break Vercel builds
 async function getPlaywright() {
@@ -33,7 +33,7 @@ export interface BrowserUploadResult {
 }
 
 function sessionPath(): string {
-  if (process.env.NODE_ENV === 'production') return '/tmp/tiktok-session.json';
+  if (IS_VERCEL) return '/tmp/tiktok-session.json';
   return dataPath('tiktok-session.json');
 }
 

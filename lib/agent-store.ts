@@ -7,7 +7,7 @@
 
 import fs   from 'fs';
 import path from 'path';
-import { dataPath } from './data-dir';
+import { dataPath, IS_VERCEL } from './data-dir';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type RunStatus =
@@ -52,7 +52,7 @@ export interface Publication {
 
 // ─── File path ────────────────────────────────────────────────────────────────
 function historyPath(): string {
-  if (process.env.NODE_ENV === 'production') return '/tmp/agent-history.json';
+  if (IS_VERCEL) return '/tmp/agent-history.json';
   const p = dataPath('agent-history.json');
   fs.mkdirSync(path.dirname(p), { recursive: true });
   return p;

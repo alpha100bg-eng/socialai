@@ -9,8 +9,27 @@
 import fs   from 'fs';
 import path from 'path';
 
+/**
+ * Vercel's filesystem is read-only except /tmp, and /tmp is wiped on every
+ * cold start — fine for Vercel (stateless by design), but WRONG for a
+ * persistent server like Railway/Render where we want data to survive restarts.
+ *
+ * Detection:
+ *   - Vercel sets process.env.VERCEL = '1'
+ *   - Railway/Render run a normal long-lived Node process with a writable FS
+ *     (optionally backed by a mounted volume at PERSISTENT_DATA_DIR)
+ */
+export const IS_VERCEL = process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined;
+
 function findDataDir(): string {
-  if (process.env.NODE_ENV === 'production') return '/tmp';
+  if (IS_VERCEL) return '/tmp';
+
+  // On a persistent host (Railway/Render/VPS), prefer an explicit mounted
+  // volume path if provided — this is what makes data survive redeploys.
+  if (process.env.PERSISTENT_DATA_DIR) {
+    fs.mkdirSync(process.env.PERSISTENT_DATA_DIR, { recursive: true });
+    return process.env.PERSISTENT_DATA_DIR;
+  }
 
   // Walk up from __dirname (lib/) looking for the package.json that
   // belongs to socialai — that's the true project root.
