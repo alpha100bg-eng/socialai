@@ -12,10 +12,27 @@ import { execSync } from 'child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR  = join(__dirname, '..', 'data');
-const OUT_FILE  = join(DATA_DIR, 'tiktok-session.json');
 
-const EDGE_EXE     = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-const EDGE_PROFILE = `C:\\Users\\ALPHA\\AppData\\Local\\Microsoft\\Edge\\User Data`;
+// ─── Profil / niche (5 comptes possibles) ─────────────────────────────────────
+const NICHE_IDS  = ['animals', 'motivation', 'food', 'space', 'travel'];
+const profileId  = (process.argv[2] || 'animals').toLowerCase();
+
+if (!NICHE_IDS.includes(profileId)) {
+  console.log(`\n⚠️  Niche inconnue : "${profileId}"`);
+  console.log(`   Niches valides : ${NICHE_IDS.join(', ')}\n`);
+  process.exit(1);
+}
+
+const suffix   = profileId === 'animals' ? '' : `-${profileId}`;
+const OUT_FILE = join(DATA_DIR, `tiktok-session${suffix}.json`);
+
+const EDGE_EXE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+
+// Compte "animals" (le tout premier) → réutilise ton profil Edge déjà connecté.
+// Les autres comptes → profil Edge isolé dédié, pour ne pas mélanger les comptes TikTok.
+const EDGE_PROFILE = profileId === 'animals'
+  ? `C:\\Users\\ALPHA\\AppData\\Local\\Microsoft\\Edge\\User Data`
+  : join(DATA_DIR, 'browser-profiles', profileId);
 
 function waitForEnter(msg) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -23,13 +40,20 @@ function waitForEnter(msg) {
 }
 
 // ─── Ferme Edge si ouvert (ignore si pas lancé) ───────────────────────────────
-console.log('\n🐾 TikTok Session Capture\n');
-console.log('🔄 Fermeture de Microsoft Edge...');
-try { execSync('taskkill /F /IM msedge.exe /T', { stdio: 'pipe' }); } catch { /* Edge n\'était pas ouvert */ }
-await new Promise(r => setTimeout(r, 2500));
+console.log(`\n🐾 TikTok Session Capture — profil "${profileId}"\n`);
 
-// ─── Lance Edge avec ton profil existant ─────────────────────────────────────
-console.log('🚀 Ouverture de Edge avec ton profil (déjà connecté à TikTok)...\n');
+if (profileId === 'animals') {
+  console.log('🔄 Fermeture de Microsoft Edge...');
+  try { execSync('taskkill /F /IM msedge.exe /T', { stdio: 'pipe' }); } catch { /* Edge n\'était pas ouvert */ }
+  await new Promise(r => setTimeout(r, 2500));
+} else {
+  if (!existsSync(EDGE_PROFILE)) mkdirSync(EDGE_PROFILE, { recursive: true });
+}
+
+// ─── Lance Edge avec le bon profil ───────────────────────────────────────────
+console.log(profileId === 'animals'
+  ? '🚀 Ouverture de Edge avec ton profil (déjà connecté à TikTok)...\n'
+  : `🚀 Ouverture d'une fenêtre Edge isolée pour le compte "${profileId}"...\n`);
 
 const context = await chromium.launchPersistentContext(EDGE_PROFILE, {
   executablePath: EDGE_EXE,
@@ -48,7 +72,7 @@ const page = await context.newPage();
 
 console.log('📌 Instructions :');
 console.log('   1. Edge va s\'ouvrir sur tiktok.com');
-console.log('   2. Si pas connecté → connecte-toi maintenant');
+console.log(`   2. Connecte-toi avec le compte TikTok du profil "${profileId}"`);
 console.log('   3. Une fois sur la page d\'accueil TikTok');
 console.log('   4. Reviens ici et appuie sur ENTRÉE\n');
 
@@ -76,10 +100,10 @@ if (!sessionCookie) {
 if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 writeFileSync(OUT_FILE, JSON.stringify({ cookies, storage }, null, 2), 'utf-8');
 
-console.log(`\n✅ Session sauvegardée ! (${cookies.length} cookies dont sessionid)`);
+console.log(`\n✅ Session sauvegardée pour "${profileId}" ! (${cookies.length} cookies dont sessionid)`);
 console.log(`   Fichier : ${OUT_FILE}`);
 console.log('\n🚀 Prochaine étape :');
-console.log('   npm run dev  →  http://localhost:3000/agent\n');
+console.log('   npm run dev  →  http://localhost:3000/agent  (sélectionne le profil dans le menu)\n');
 
 await context.close();
 process.exit(0);

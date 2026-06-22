@@ -5,11 +5,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { loadMemory, saveMemory }    from '@/lib/agent-memory';
+import { DEFAULT_NICHE }              from '@/lib/niches';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const memory = loadMemory();
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const profileId = searchParams.get('profileId') || DEFAULT_NICHE;
+  const memory = loadMemory(profileId);
   return NextResponse.json(memory);
 }
 
@@ -22,7 +25,10 @@ export async function DELETE(req: NextRequest) {
     }
   }
 
-  saveMemory({
+  const { searchParams } = new URL(req.url);
+  const profileId = searchParams.get('profileId') || DEFAULT_NICHE;
+
+  saveMemory(profileId, {
     bestHooks:         [],
     bestTopics:        [],
     failedStyles:      [],

@@ -17,6 +17,7 @@ import { getPublications, updatePublication }                from '@/lib/agent-s
 import { getTikTokConfig }                                   from '@/lib/tiktok-config';
 import { listVideos }                                        from '@/lib/tiktok-comments';
 import { loadMemory, saveMemory, recordPerformance }         from '@/lib/agent-memory';
+import { DEFAULT_NICHE }                                     from '@/lib/niches';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,14 +31,17 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const memory = loadMemory();
+  const body = await req.json().catch(() => ({})) as Record<string, unknown>;
+  const profileId = typeof body.profileId === 'string' && body.profileId ? body.profileId : DEFAULT_NICHE;
+
+  const memory = loadMemory(profileId);
   const config = getTikTokConfig();
 
   // ── If TikTok connected → fetch real analytics ────────────────────────────
   if (config?.accessToken) {
     try {
       const videos = await listVideos(config.accessToken, 30);
-      const pubs   = getPublications(50);
+      const pubs   = getPublications(profileId, 50);
       let updated  = memory;
       let count    = 0;
 
@@ -48,7 +52,7 @@ export async function POST(req: NextRequest) {
         if (!pub) continue;
 
         // Update analytics in publication store
-        updatePublication(pub.id, {
+        updatePublication(profileId, pub.id, {
           tikTokVideoId: video.id,
           analytics: {
             views:    video.viewCount    ?? 0,
@@ -73,7 +77,7 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      saveMemory(updated);
+      saveMemory(profileId, updated);
 
       return NextResponse.json({
         success: true,
@@ -93,7 +97,7 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Fallback: use analytics already stored locally ────────────────────────
-  const pubs   = getPublications(20);
+  const pubs   = getPublications(profileId, 20);
   let updated  = memory;
   let count    = 0;
 
@@ -113,7 +117,7 @@ export async function POST(req: NextRequest) {
     count++;
   }
 
-  saveMemory(updated);
+  saveMemory(profileId, updated);
 
   return NextResponse.json({
     success: true,

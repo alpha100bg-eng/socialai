@@ -12,6 +12,7 @@ import {
   Sun, Moon, Eye, ThumbsUp, Share2, Brain, TrendingUp, Trash2,
 } from 'lucide-react';
 import type { Publication, RunStatus, TimeSlot } from '@/lib/agent-store';
+import { NICHES, listNicheIds, DEFAULT_NICHE } from '@/lib/niches';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface TikTokStatus {
@@ -103,7 +104,7 @@ function SlotBadge({ slot }: { slot?: TimeSlot }) {
 }
 
 // ─── Comment panel for a single video ────────────────────────────────────────
-function CommentPanel({ pub }: { pub: Publication }) {
+function CommentPanel({ pub, profileId }: { pub: Publication; profileId: string }) {
   const [comments, setComments]         = useState<TikTokComment[]>([]);
   const [loading, setLoading]           = useState(false);
   const [replying, setReplying]         = useState<string | null>(null);
@@ -132,7 +133,7 @@ function CommentPanel({ pub }: { pub: Publication }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           videoId, commentId: comment.id, commentText: comment.text,
-          previousReplies: Object.values(sentReplies),
+          previousReplies: Object.values(sentReplies), profileId,
         }),
       });
       const data = await res.json();
@@ -197,7 +198,7 @@ function CommentPanel({ pub }: { pub: Publication }) {
 }
 
 // ─── Publication row ──────────────────────────────────────────────────────────
-function PublicationRow({ pub, defaultOpen = false }: { pub: Publication; defaultOpen?: boolean }) {
+function PublicationRow({ pub, profileId, defaultOpen = false }: { pub: Publication; profileId: string; defaultOpen?: boolean }) {
   const [open, setOpen]             = useState(defaultOpen);
   const [showComments, setShowComments] = useState(false);
   const meta = STATUS_META[pub.status];
@@ -306,7 +307,7 @@ function PublicationRow({ pub, defaultOpen = false }: { pub: Publication; defaul
                 {showComments ? 'Masquer commentaires' : 'Gérer les commentaires'}
                 {showComments ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
               </button>
-              {showComments && <CommentPanel pub={pub} />}
+              {showComments && <CommentPanel pub={pub} profileId={profileId} />}
             </div>
           )}
 
@@ -321,7 +322,7 @@ function PublicationRow({ pub, defaultOpen = false }: { pub: Publication; defaul
 }
 
 // ─── TikTok connect panel ─────────────────────────────────────────────────────
-function TikTokConnectPanel() {
+function TikTokConnectPanel({ profileId }: { profileId: string }) {
   const searchParams                      = useSearchParams();
   const [status, setStatus]               = useState<TikTokStatus | null>(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -329,10 +330,10 @@ function TikTokConnectPanel() {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res  = await fetch('/api/tiktok/status');
+      const res  = await fetch(`/api/tiktok/status?profileId=${profileId}`);
       setStatus(await res.json());
     } catch { /* ignore */ }
-  }, []);
+  }, [profileId]);
 
   useEffect(() => {
     fetchStatus();
@@ -450,7 +451,7 @@ interface AgentMemoryData {
   lastUpdated:       string;
 }
 
-function MemoryPanel() {
+function MemoryPanel({ profileId }: { profileId: string }) {
   const [mem, setMem]       = useState<AgentMemoryData | null>(null);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -458,7 +459,7 @@ function MemoryPanel() {
 
   const load = async () => {
     setLoading(true);
-    try { setMem(await (await fetch('/api/agent/memory')).json()); }
+    try { setMem(await (await fetch(`/api/agent/memory?profileId=${profileId}`)).json()); }
     catch { /* ignore */ } finally { setLoading(false); }
   };
 
@@ -466,7 +467,9 @@ function MemoryPanel() {
     setFeedback('running');
     try {
       const res  = await fetch('/api/agent/feedback', {
-        method: 'POST', headers: { Authorization: `Bearer ${cronSecret}` },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cronSecret}` },
+        body: JSON.stringify({ profileId }),
       });
       const data = await res.json();
       setFeedback(data.success ? `✅ ${data.scored} vidéo(s) scorées — avg ${data.memory?.avgScore}/10` : `❌ ${data.error}`);
@@ -474,7 +477,7 @@ function MemoryPanel() {
     } catch { setFeedback('❌ Erreur réseau'); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [profileId]);
 
   return (
     <div className="bg-white/[0.03] border border-white/8 rounded-2xl p-5 space-y-4">
@@ -551,7 +554,7 @@ function MemoryPanel() {
 }
 
 // ─── Analytics panel ──────────────────────────────────────────────────────────
-function AnalyticsPanel() {
+function AnalyticsPanel({ profileId }: { profileId: string }) {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
@@ -560,7 +563,7 @@ function AnalyticsPanel() {
     setLoading(true);
     setError(null);
     try {
-      const res  = await fetch('/api/agent/analytics');
+      const res  = await fetch(`/api/agent/analytics?profileId=${profileId}`);
       const data = await res.json();
       if (data.error) { setError(data.error); return; }
       setAnalytics(data);
@@ -635,13 +638,14 @@ export default function AgentDashboard() {
   const [publishedCount, setPublishedCount] = useState(0);
   const [lastRefresh, setLastRefresh]       = useState<Date | null>(null);
   const [selectedSlot, setSelectedSlot]     = useState<TimeSlot>('morning');
+  const [profileId, setProfileId]           = useState<string>(DEFAULT_NICHE);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchHistory = useCallback(async () => {
     try {
       const [histRes, statusRes] = await Promise.all([
-        fetch('/api/agent/history?limit=30'),
-        fetch('/api/agent/status'),
+        fetch(`/api/agent/history?limit=30&profileId=${profileId}`),
+        fetch(`/api/agent/status?profileId=${profileId}`),
       ]);
       const hist   = await histRes.json();
       const status = await statusRes.json();
@@ -651,7 +655,7 @@ export default function AgentDashboard() {
       setPublishedCount(status.publishedCount ?? 0);
       setLastRefresh(new Date());
     } catch { /* ignore */ }
-  }, []);
+  }, [profileId]);
 
   useEffect(() => {
     fetchHistory();
@@ -673,7 +677,7 @@ export default function AgentDashboard() {
       const res  = await fetch('/api/agent/daily-run', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.NEXT_PUBLIC_CRON_SECRET ?? 'dev'}` },
-        body: JSON.stringify({ force, slot: selectedSlot }),
+        body: JSON.stringify({ force, slot: selectedSlot, profileId }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -714,11 +718,21 @@ export default function AgentDashboard() {
               <ArrowLeft size={18} />
             </Link>
             <div>
-              <h1 className="font-bold text-white text-sm">🐾 Animal TikTok Agent</h1>
+              <h1 className="font-bold text-white text-sm">{NICHES[profileId]?.label ?? 'TikTok Agent'}</h1>
               <p className="text-white/30 text-xs">2 vidéos/jour · Storytelling · Kling 3.0 + Groq</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Profile selector */}
+            <select
+              value={profileId}
+              onChange={(e) => setProfileId(e.target.value)}
+              className="bg-white/5 border border-white/10 text-xs text-white/70 rounded-xl px-2 py-1.5 outline-none focus:border-white/20"
+            >
+              {listNicheIds().map((id) => (
+                <option key={id} value={id} className="bg-[#030712]">{NICHES[id].label}</option>
+              ))}
+            </select>
             {/* Today's slot indicators */}
             <div className="flex items-center gap-1">
               <span className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border ${
@@ -748,7 +762,7 @@ export default function AgentDashboard() {
 
         {/* TikTok connection */}
         <Suspense fallback={null}>
-          <TikTokConnectPanel />
+          <TikTokConnectPanel profileId={profileId} />
         </Suspense>
 
         {/* Stats */}
@@ -855,10 +869,10 @@ export default function AgentDashboard() {
         </div>
 
         {/* Memory */}
-        <MemoryPanel />
+        <MemoryPanel profileId={profileId} />
 
         {/* Analytics */}
-        <AnalyticsPanel />
+        <AnalyticsPanel profileId={profileId} />
 
         {/* Publication history */}
         <div className="space-y-3">
@@ -877,7 +891,7 @@ export default function AgentDashboard() {
           ) : (
             <div className="space-y-2">
               {publications.map((pub, i) => (
-                <PublicationRow key={pub.id} pub={pub} defaultOpen={i === 0 && isActive} />
+                <PublicationRow key={pub.id} pub={pub} profileId={profileId} defaultOpen={i === 0 && isActive} />
               ))}
             </div>
           )}

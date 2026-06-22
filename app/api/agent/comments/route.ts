@@ -10,7 +10,8 @@ import { NextRequest, NextResponse }        from 'next/server';
 import { getTikTokConfig }                   from '@/lib/tiktok-config';
 import { listComments, replyToComment, likeComment } from '@/lib/tiktok-comments';
 import { getPublications }                   from '@/lib/agent-store';
-import { buildCommentReplyPrompt }           from '@/lib/animal-content';
+import { buildCommentReplyPrompt }           from '@/lib/content-prompts';
+import { getNiche, DEFAULT_NICHE }           from '@/lib/niches';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,19 +60,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'TikTok not connected' }, { status: 401 });
   }
 
-  const { videoId, commentId, commentText, previousReplies } = await req.json();
+  const { videoId, commentId, commentText, previousReplies, profileId } = await req.json();
   if (!videoId || !commentId || !commentText) {
     return NextResponse.json({ error: 'videoId, commentId, commentText required' }, { status: 400 });
   }
 
+  const niche = getNiche(profileId || DEFAULT_NICHE);
+
   // Find video topic from store to give context
-  const publications = getPublications(50);
+  const publications = getPublications(profileId || DEFAULT_NICHE, 50);
   const pub = publications.find((p) => p.tikTokVideoId === videoId || p.tikTokPublishId);
-  const videoTopic = pub?.topic ?? 'an amazing animal moment';
+  const videoTopic = pub?.topic ?? 'an amazing moment';
 
   // Generate AI reply
   const replyText = await groq(
-    buildCommentReplyPrompt(videoTopic, commentText, previousReplies ?? []),
+    buildCommentReplyPrompt(niche, videoTopic, commentText, previousReplies ?? []),
   );
 
   if (!replyText) {

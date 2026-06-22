@@ -1,11 +1,15 @@
-import { NextResponse }         from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getTikTokConfig }      from '@/lib/tiktok-config';
 import { hasBrowserSession }    from '@/lib/tiktok-browser';
+import { DEFAULT_NICHE }         from '@/lib/niches';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const browserSession = hasBrowserSession();
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const profileId = searchParams.get('profileId') || DEFAULT_NICHE;
+
+  const browserSession = hasBrowserSession(profileId);
   const apiConfig      = getTikTokConfig();
 
   // Browser session takes priority

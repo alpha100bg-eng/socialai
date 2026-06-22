@@ -13,6 +13,7 @@ import fs   from 'fs';
 import path from 'path';
 import type { Publication } from './agent-store';
 import { dataPath, IS_VERCEL } from './data-dir';
+import { DEFAULT_NICHE }       from './niches';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,28 +54,30 @@ const DEFAULT_MEMORY: AgentMemory = {
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
-function memoryPath(): string {
-  if (IS_VERCEL) return '/tmp/agent-memory.json';
-  const p = dataPath('agent-memory.json');
+function memoryPath(profileId: string): string {
+  const suffix = profileId === DEFAULT_NICHE ? '' : `-${profileId}`;
+  const file   = `agent-memory${suffix}.json`;
+  if (IS_VERCEL) return `/tmp/${file}`;
+  const p = dataPath(file);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   return p;
 }
 
-export function loadMemory(): AgentMemory {
+export function loadMemory(profileId: string = DEFAULT_NICHE): AgentMemory {
   try {
-    const raw = fs.readFileSync(memoryPath(), 'utf-8');
+    const raw = fs.readFileSync(memoryPath(profileId), 'utf-8');
     return { ...DEFAULT_MEMORY, ...JSON.parse(raw) };
   } catch {
     return { ...DEFAULT_MEMORY };
   }
 }
 
-export function saveMemory(memory: AgentMemory): void {
+export function saveMemory(profileId: string, memory: AgentMemory): void {
   try {
     const updated = { ...memory, lastUpdated: new Date().toISOString() };
-    fs.writeFileSync(memoryPath(), JSON.stringify(updated, null, 2), 'utf-8');
+    fs.writeFileSync(memoryPath(profileId), JSON.stringify(updated, null, 2), 'utf-8');
   } catch (e) {
-    console.warn('[agent-memory] Save failed:', e);
+    console.warn(`[agent-memory:${profileId}] Save failed:`, e);
   }
 }
 

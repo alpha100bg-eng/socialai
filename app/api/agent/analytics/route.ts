@@ -5,14 +5,18 @@
  * Requires TikTok scope: video.list
  */
 
-import { NextResponse }                from 'next/server';
+import { NextRequest, NextResponse }   from 'next/server';
 import { getTikTokConfig }              from '@/lib/tiktok-config';
 import { listVideos }                   from '@/lib/tiktok-comments';
 import { getPublications, updatePublication } from '@/lib/agent-store';
+import { DEFAULT_NICHE }                from '@/lib/niches';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const profileId = searchParams.get('profileId') || DEFAULT_NICHE;
+
   const config = getTikTokConfig();
   if (!config?.accessToken) {
     return NextResponse.json({ error: 'TikTok not connected' }, { status: 401 });
@@ -22,13 +26,13 @@ export async function GET() {
     const videos = await listVideos(config.accessToken, 20);
 
     // Sync analytics back into agent-store publications
-    const publications = getPublications(50);
+    const publications = getPublications(profileId, 50);
     for (const video of videos) {
       const pub = publications.find(
         (p) => p.tikTokPublishId === video.id || p.tikTokVideoId === video.id,
       );
       if (pub) {
-        updatePublication(pub.id, {
+        updatePublication(profileId, pub.id, {
           tikTokVideoId: video.id,
           analytics: {
             views:    video.viewCount,

@@ -10,6 +10,7 @@
 import fs   from 'fs';
 import path from 'path';
 import { dataPath, IS_VERCEL } from './data-dir';
+import { DEFAULT_NICHE }       from './niches';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -28,30 +29,31 @@ interface TrendCache {
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
-const SUBREDDITS     = ['aww', 'AnimalsBeingBros', 'NatureIsFuckingLit', 'rarepuppers', 'likeus'];
 const CACHE_TTL_MS   = 2 * 60 * 60 * 1000; // 2 hours
 const FETCH_TIMEOUT  = 8_000;
 
 // ─── Persistence ─────────────────────────────────────────────────────────────
 
-function cachePath(): string {
-  if (IS_VERCEL) return '/tmp/trend-cache.json';
-  const p = dataPath('trend-cache.json');
+function cachePath(profileId: string = DEFAULT_NICHE): string {
+  const suffix = profileId === DEFAULT_NICHE ? '' : `-${profileId}`;
+  const file   = `trend-cache${suffix}.json`;
+  if (IS_VERCEL) return `/tmp/${file}`;
+  const p = dataPath(file);
   fs.mkdirSync(path.dirname(p), { recursive: true });
   return p;
 }
 
-function loadCache(): TrendCache | null {
+function loadCache(profileId: string): TrendCache | null {
   try {
-    const raw = fs.readFileSync(cachePath(), 'utf-8');
+    const raw = fs.readFileSync(cachePath(profileId), 'utf-8');
     const cache = JSON.parse(raw) as TrendCache;
     if (Date.now() - new Date(cache.fetchedAt).getTime() < CACHE_TTL_MS) return cache;
     return null;
   } catch { return null; }
 }
 
-function saveCache(cache: TrendCache): void {
-  try { fs.writeFileSync(cachePath(), JSON.stringify(cache, null, 2), 'utf-8'); }
+function saveCache(profileId: string, cache: TrendCache): void {
+  try { fs.writeFileSync(cachePath(profileId), JSON.stringify(cache, null, 2), 'utf-8'); }
   catch { /* ignore write errors in prod */ }
 }
 
@@ -99,18 +101,21 @@ async function fetchSubreddit(subreddit: string): Promise<TrendingTopic[]> {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
-/** Fetch trending animal topics from Reddit (cached 2h). Falls back gracefully. */
-export async function fetchTrendingTopics(): Promise<TrendingTopic[]> {
-  const cached = loadCache();
+/** Fetch trending topics from Reddit for a given niche's subreddits (cached 2h). Falls back gracefully. */
+export async function fetchTrendingTopics(
+  subreddits: string[],
+  profileId:  string = DEFAULT_NICHE,
+): Promise<TrendingTopic[]> {
+  const cached = loadCache(profileId);
   if (cached) return cached.topics;
 
-  const results = await Promise.allSettled(SUBREDDITS.map(fetchSubreddit));
+  const results = await Promise.allSettled(subreddits.map(fetchSubreddit));
   const topics  = results
     .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
     .sort((a, b) => b.trendScore - a.trendScore)
     .slice(0, 25);
 
-  if (topics.length > 0) saveCache({ fetchedAt: new Date().toISOString(), topics });
+  if (topics.length > 0) saveCache(profileId, { fetchedAt: new Date().toISOString(), topics });
   return topics;
 }
 

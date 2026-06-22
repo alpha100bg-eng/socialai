@@ -13,6 +13,7 @@ import fs   from 'fs';
 import path from 'path';
 import os   from 'os';
 import { dataPath, IS_VERCEL } from './data-dir';
+import { DEFAULT_NICHE }       from './niches';
 
 // Lazy-load playwright so it doesn't break Vercel builds
 async function getPlaywright() {
@@ -32,14 +33,16 @@ export interface BrowserUploadResult {
   error?:    string;
 }
 
-function sessionPath(): string {
-  if (IS_VERCEL) return '/tmp/tiktok-session.json';
-  return dataPath('tiktok-session.json');
+function sessionPath(profileId: string = DEFAULT_NICHE): string {
+  const suffix = profileId === DEFAULT_NICHE ? '' : `-${profileId}`;
+  const file   = `tiktok-session${suffix}.json`;
+  if (IS_VERCEL) return `/tmp/${file}`;
+  return dataPath(file);
 }
 
-/** Returns true if a saved TikTok browser session exists */
-export function hasBrowserSession(): boolean {
-  return fs.existsSync(sessionPath());
+/** Returns true if a saved TikTok browser session exists for the given profile */
+export function hasBrowserSession(profileId: string = DEFAULT_NICHE): boolean {
+  return fs.existsSync(sessionPath(profileId));
 }
 
 /** Download a remote video to a local temp file */
@@ -55,8 +58,9 @@ async function downloadToTemp(url: string): Promise<string> {
 /** Upload a video to TikTok using browser automation */
 export async function uploadViaBrowser(
   opts: BrowserUploadOptions,
+  profileId: string = DEFAULT_NICHE,
 ): Promise<BrowserUploadResult> {
-  const sess = sessionPath();
+  const sess = sessionPath(profileId);
   if (!fs.existsSync(sess)) {
     return {
       success: false,

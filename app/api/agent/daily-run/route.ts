@@ -36,12 +36,12 @@ import {
 }                                                 from '@/lib/tiktok';
 import { getTikTokConfig, saveTikTokConfig }      from '@/lib/tiktok-config';
 import { uploadViaBrowser, hasBrowserSession }    from '@/lib/tiktok-browser';
+import { getSlotFromTime, getNiche, DEFAULT_NICHE } from '@/lib/niches';
 import {
-  getSlotFromTime,
   buildStructuredContentPrompt,
   parseStructuredContent,
   buildSafetyCheckPrompt,
-}                                                 from '@/lib/animal-content';
+}                                                 from '@/lib/content-prompts';
 import {
   fetchTrendingTopics,
   selectBestTrend,
@@ -90,9 +90,9 @@ function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms)); }
 
 // ─── Safety check ─────────────────────────────────────────────────────────────
 
-async function isSafeContent(topic: string): Promise<boolean> {
+async function isSafeContent(niche: ReturnType<typeof getNiche>, topic: string): Promise<boolean> {
   try {
-    const raw    = await groq(buildSafetyCheckPrompt(topic), 60, true);
+    const raw    = await groq(buildSafetyCheckPrompt(niche, topic), 60, true);
     const result = JSON.parse(raw) as { safe?: boolean };
     return result.safe !== false;
   } catch {
@@ -115,16 +115,22 @@ export async function POST(req: NextRequest) {
   const body  = await req.json().catch(() => ({})) as Record<string, unknown>;
   const force = body.force === true;
 
+  // ── Determine profile/niche ───────────────────────────────────────────────
+  const profileId = typeof body.profileId === 'string' && body.profileId
+    ? body.profileId
+    : DEFAULT_NICHE;
+  const niche = getNiche(profileId);
+
   // ── Determine slot ────────────────────────────────────────────────────────
   const slot: TimeSlot = (body.slot === 'morning' || body.slot === 'evening')
     ? body.slot
     : getSlotFromTime();
 
   // ── Guards ────────────────────────────────────────────────────────────────
-  if (isRunning()) {
+  if (isRunning(profileId)) {
     return NextResponse.json({ error: 'Agent is already running' }, { status: 409 });
   }
-  if (!force && alreadyRanSlot(slot)) {
+  if (!force && alreadyRanSlot(profileId, slot)) {
     return NextResponse.json(
       { error: `${slot} slot already published today. Use force:true to override.` },
       { status: 409 },
@@ -145,32 +151,32 @@ export async function POST(req: NextRequest) {
     caption:      '',
     hashtags:     [],
   };
-  savePublication(pub);
-  setRunning(true);
+  savePublication(profileId, pub);
+  setRunning(profileId, true);
 
   try {
     // ── Step 1: Load memory (learned patterns) ────────────────────────────
-    const memory      = loadMemory();
+    const memory      = loadMemory(profileId);
     const memBoost    = getMemoryBoost(memory);
     const recentTopics = getRecentTopics(memory, 10);
 
-    console.log(`[agent] Memory: ${memory.totalPublished} videos, avg score ${memory.avgScore.toFixed(1)}/10`);
+    console.log(`[agent:${profileId}] Memory: ${memory.totalPublished} videos, avg score ${memory.avgScore.toFixed(1)}/10`);
 
     // ── Step 2: Fetch trending topics from Reddit ────────────────────────
-    let trendContext = 'No trend data available — use best animal content instincts.';
+    let trendContext = `No trend data available — use best ${niche.label} content instincts.`;
     try {
-      const trends = await fetchTrendingTopics();
+      const trends = await fetchTrendingTopics(niche.subreddits, profileId);
       const best   = selectBestTrend(trends, recentTopics);
       if (best) {
         trendContext = trendToContext(best);
-        console.log(`[agent] Trend: ${trendContext}`);
+        console.log(`[agent:${profileId}] Trend: ${trendContext}`);
       }
     } catch (e) {
-      console.warn('[agent] Trend fetch failed (non-fatal):', e);
+      console.warn(`[agent:${profileId}] Trend fetch failed (non-fatal):`, e);
     }
 
     // ── Step 3: Generate structured content (single Groq call) ───────────
-    const contentPrompt = buildStructuredContentPrompt(slot, trendContext, memBoost);
+    const contentPrompt = buildStructuredContentPrompt(niche, slot, trendContext, memBoost);
 
     let content = null;
     let attempt = 0;
@@ -181,14 +187,14 @@ export async function POST(req: NextRequest) {
       content   = parseStructuredContent(raw);
 
       if (!content) {
-        console.warn(`[agent] Content parse failed (attempt ${attempt}), retrying...`);
+        console.warn(`[agent:${profileId}] Content parse failed (attempt ${attempt}), retrying...`);
         continue;
       }
 
       // ── Step 4: Safety check ──────────────────────────────────────────
-      const safe = await isSafeContent(content.topic);
+      const safe = await isSafeContent(niche, content.topic);
       if (!safe) {
-        console.warn(`[agent] Unsafe content detected (attempt ${attempt}): "${content.topic}"`);
+        console.warn(`[agent:${profileId}] Unsafe content detected (attempt ${attempt}): "${content.topic}"`);
         content = null; // trigger retry
       }
     }
@@ -196,7 +202,7 @@ export async function POST(req: NextRequest) {
     if (!content) throw new Error('Content generation failed safety check after 2 attempts');
 
     const { topic, caption, hashtags, videoPrompt } = content;
-    updatePublication(id, { topic, caption, hashtags, videoPrompt, status: 'pending_video' });
+    updatePublication(profileId, id, { topic, caption, hashtags, videoPrompt, status: 'pending_video' });
 
     console.log(`[agent] Topic: ${topic}`);
 
@@ -208,8 +214,8 @@ export async function POST(req: NextRequest) {
       // Self-hosted Wan2GP
       const job = await submitWan2GPVideo(videoPrompt, '9:16');
       wan2gpJobId = job.jobId;
-      updatePublication(id, { falRequestId: wan2gpJobId });
-      console.log(`[agent] Wan2GP job: ${wan2gpJobId}`);
+      updatePublication(profileId, id, { falRequestId: wan2gpJobId });
+      console.log(`[agent:${profileId}] Wan2GP job: ${wan2gpJobId}`);
     } else {
       // fal.ai / Kling 3.0 fallback
       fal.config({ credentials: process.env.FAL_KEY });
@@ -224,7 +230,7 @@ export async function POST(req: NextRequest) {
         },
       });
       falRequestId = handle.request_id;
-      updatePublication(id, { falRequestId });
+      updatePublication(profileId, id, { falRequestId });
     }
 
     // ── Step 6: Poll until video ready ────────────────────────────────────
@@ -253,9 +259,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (!videoUrl) throw new Error('Video generation timed out (3 min exceeded)');
-    updatePublication(id, { videoUrl, videoReadyAt: new Date().toISOString() });
+    updatePublication(profileId, id, { videoUrl, videoReadyAt: new Date().toISOString() });
 
-    console.log(`[agent] Video ready: ${videoUrl.slice(0, 80)}...`);
+    console.log(`[agent:${profileId}] Video ready: ${videoUrl.slice(0, 80)}...`);
 
     // ── Step 7: Publish to TikTok ─────────────────────────────────────────
     const fullCaption   = buildCaption(caption, hashtags);
@@ -265,21 +271,21 @@ export async function POST(req: NextRequest) {
     let publishMethod   = 'none';
 
     // ── 7a: Browser session ──────────────────────────────────────────────
-    if (hasBrowserSession()) {
-      console.log('[agent] Publishing via browser session...');
+    if (hasBrowserSession(profileId)) {
+      console.log(`[agent:${profileId}] Publishing via browser session...`);
       const result = await uploadViaBrowser({
         videoUrl,
         caption: fullCaption,
         privacy: process.env.TIKTOK_PRIVACY_LEVEL === 'PUBLIC_TO_EVERYONE' ? 'public' : 'private',
-      });
+      }, profileId);
 
       if (result.success) {
         tikTokStatus   = 'PUBLISH_COMPLETE';
         tikTokShareUrl = result.shareUrl ?? '';
         publishMethod  = 'browser';
-        console.log('[agent] Browser publish success');
+        console.log(`[agent:${profileId}] Browser publish success`);
       } else {
-        console.warn('[agent] Browser upload failed:', result.error);
+        console.warn(`[agent:${profileId}] Browser upload failed:`, result.error);
       }
     }
 
@@ -340,7 +346,7 @@ export async function POST(req: NextRequest) {
 
     // ── 7c: No TikTok configured ──────────────────────────────────────────
     if (publishMethod === 'none') {
-      updatePublication(id, {
+      updatePublication(profileId, id, {
         status:       'published',
         caption, hashtags, videoUrl, topic, videoPrompt,
         publishedAt:  new Date().toISOString(),
@@ -348,13 +354,13 @@ export async function POST(req: NextRequest) {
         tikTokStatus: 'SKIPPED_NOT_CONFIGURED',
       });
       return NextResponse.json({
-        success: true, id, slot, topic, videoUrl, caption, hashtags,
+        success: true, id, profileId, slot, topic, videoUrl, caption, hashtags,
         warning: 'TikTok non configuré — vidéo générée mais non publiée. Lance npm run tiktok:login',
       });
     }
 
     // ── Step 8: Persist ───────────────────────────────────────────────────
-    updatePublication(id, {
+    updatePublication(profileId, id, {
       status: 'published',
       caption, hashtags, videoUrl, topic, videoPrompt,
       tikTokPublishId, tikTokShareUrl,
@@ -363,20 +369,20 @@ export async function POST(req: NextRequest) {
       durationMs:   Date.now() - startMs,
     });
 
-    console.log(`[agent] ✅ Done — ${slot} slot published via ${publishMethod} in ${Date.now() - startMs}ms`);
+    console.log(`[agent:${profileId}] ✅ Done — ${slot} slot published via ${publishMethod} in ${Date.now() - startMs}ms`);
 
     return NextResponse.json({
-      success: true, id, slot, topic, videoUrl, caption, hashtags,
+      success: true, id, profileId, slot, topic, videoUrl, caption, hashtags,
       tikTokPublishId, tikTokShareUrl, publishMethod,
       durationMs: Date.now() - startMs,
     });
 
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('[agent] Pipeline failed:', message);
-    updatePublication(id, { status: 'failed', error: message, durationMs: Date.now() - startMs });
-    return NextResponse.json({ error: message, id }, { status: 500 });
+    console.error(`[agent:${profileId}] Pipeline failed:`, message);
+    updatePublication(profileId, id, { status: 'failed', error: message, durationMs: Date.now() - startMs });
+    return NextResponse.json({ error: message, id, profileId }, { status: 500 });
   } finally {
-    setRunning(false);
+    setRunning(profileId, false);
   }
 }
