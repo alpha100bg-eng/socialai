@@ -106,10 +106,11 @@ export async function uploadViaBrowser(
     });
 
     // ── Navigate to TikTok Studio upload page ─────────────────────────────
-    console.log('[tiktok-browser] Navigating to TikTok upload...');
-    await page.goto('https://www.tiktok.com/upload', {
+    // TikTok a migré /upload → /tiktokstudio/upload. On vise la nouvelle URL.
+    console.log('[tiktok-browser] Navigating to TikTok Studio upload...');
+    await page.goto('https://www.tiktok.com/tiktokstudio/upload', {
       waitUntil: 'domcontentloaded',
-      timeout:   30_000,
+      timeout:   45_000,
     });
 
     // Check if we're still logged in (redirect to login = session expired)
@@ -120,34 +121,44 @@ export async function uploadViaBrowser(
       };
     }
 
-    // TikTok upload might be in an iframe
-    await page.waitForTimeout(3000);
+    // Laisse le studio charger (React + iframes éventuels)
+    await page.waitForTimeout(5000);
 
-    // ── Find and use file input (check iframe first) ──────────────────────
+    // ── Find the file input across page + all frames (poll up to 60s) ─────
+    // Le champ <input type=file> est souvent présent mais caché derrière une
+    // drop-zone, et peut vivre dans un iframe creator/studio.
     let fileInputLocator;
-    const iframes = page.frames();
     let targetFrame = page;
+    const findDeadline = Date.now() + 60_000;
 
-    for (const frame of iframes) {
-      const frameUrl = frame.url();
-      if (frameUrl.includes('upload') || frameUrl.includes('creator') || frameUrl.includes('studio')) {
-        const inp = frame.locator('input[type="file"]');
-        if (await inp.count() > 0) {
-          // Use frame as page-like object
-          fileInputLocator = inp.first();
-          targetFrame = frame as unknown as typeof page;
-          break;
-        }
+    while (Date.now() < findDeadline && !fileInputLocator) {
+      // 1) Page principale
+      const mainInput = page.locator('input[type="file"]');
+      if (await mainInput.count() > 0) {
+        fileInputLocator = mainInput.first();
+        targetFrame = page;
+        break;
       }
+      // 2) Tous les iframes
+      for (const frame of page.frames()) {
+        try {
+          const inp = frame.locator('input[type="file"]');
+          if (await inp.count() > 0) {
+            fileInputLocator = inp.first();
+            targetFrame = frame as unknown as typeof page;
+            break;
+          }
+        } catch { /* frame détaché — ignore */ }
+      }
+      if (!fileInputLocator) await page.waitForTimeout(2000);
     }
 
-    // Fallback: main page
     if (!fileInputLocator) {
-      fileInputLocator = page.locator('input[type="file"]').first();
+      return { success: false, error: 'Champ d\'upload TikTok introuvable (UI changée ?)' };
     }
 
     console.log('[tiktok-browser] Uploading video file...');
-    await fileInputLocator.setInputFiles(tempFile);
+    await fileInputLocator.setInputFiles(tempFile, { timeout: 60_000 });
 
     // ── Wait for upload + processing (up to 3 min) ────────────────────────
     console.log('[tiktok-browser] Waiting for video processing...');
@@ -174,56 +185,142 @@ export async function uploadViaBrowser(
       return { success: false, error: 'Impossible de trouver le champ description TikTok' };
     }
 
-    // ── Type caption (with hashtags) ─────────────────────────────────────
-    await captionEl.click({ force: true });
-    await page.waitForTimeout(500);
-
-    // Clear and type
-    await captionEl.selectText().catch(() => {});
-    const maxCaption = opts.caption.substring(0, 2200);
-    await captionEl.pressSequentially(maxCaption, { delay: 10 });
-
-    await page.waitForTimeout(1000);
-
-    // ── Set privacy ────────────────────────────────────────────────────────
-    if (opts.privacy === 'private') {
-      // Try to find privacy selector
-      const privacySelectors = [
-        '[data-e2e="permission-container"]',
-        '[class*="privacy"]',
-        'select[class*="select"]',
+    // ── Dismiss TikTok popups that steal focus / block the Post button ────
+    // (dialogue "Turn on automatic content checks?", tooltip "New editing
+    //  features added", etc.) — sinon ils volent le focus du champ caption
+    //  et interceptent le clic Post.
+    const dismissPopups = async () => {
+      const dismissBtns = [
+        'button:has-text("Got it")',
+        'button:has-text("Cancel")',
+        'button:has-text("Annuler")',
+        'button:has-text("Not now")',
+        'div[class*="TUXModal"] button[aria-label*="lose"]',
+        'div[class*="TUXModal"] svg[class*="close"]',
       ];
-      for (const sel of privacySelectors) {
-        const el = page.locator(sel).first();
-        if (await el.count() > 0) {
-          await el.click().catch(() => {});
-          break;
+      for (const sel of dismissBtns) {
+        const b = page.locator(sel).first();
+        if (await b.count() > 0 && await b.isVisible().catch(() => false)) {
+          await b.click({ timeout: 5_000 }).catch(() => {});
+          await page.waitForTimeout(400);
         }
       }
-    }
+    };
+    await dismissPopups();
+    // La caption est saisie PLUS BAS, après la fin du traitement vidéo :
+    // TikTok réécrit la description avec le nom du fichier quand le traitement
+    // se termine, donc taper avant serait écrasé.
+    void captionEl;
 
-    // ── Click Post button ─────────────────────────────────────────────────
-    console.log('[tiktok-browser] Posting...');
+    // NOTE : on ne touche PAS au menu de confidentialité — l'ouvrir laissait
+    // un overlay flottant (TUXModal) ouvert qui bloquait le clic sur "Post".
+    // La vidéo est postée avec la confidentialité par défaut du compte TikTok.
+
+    // ── Wait for TikTok to FINISH processing the video ───────────────────
+    // L'erreur "Something went wrong" venait d'un clic Post trop tôt : le
+    // champ caption apparaît avant la fin du traitement vidéo. On attend donc
+    // que le bouton Post soit réellement présent ET activé (jusqu'à 3 min).
+    console.log('[tiktok-browser] Waiting for upload to finish processing...');
 
     const postSelectors = [
+      'button[data-e2e="post_video_button"]',  // sélecteur réel TikTok Studio
       'button[data-e2e="post-button"]',
       'button:has-text("Post")',
       'button:has-text("Publier")',
       'button[class*="submit"]:not([disabled])',
     ];
 
-    let posted = false;
-    for (const sel of postSelectors) {
-      const btn = page.locator(sel).last();
-      if (await btn.count() > 0 && await btn.isEnabled()) {
-        await btn.click();
-        posted = true;
-        break;
+    const procDeadline = Date.now() + 180_000;
+    let postBtn = null;
+
+    while (Date.now() < procDeadline && !postBtn) {
+      for (const sel of postSelectors) {
+        const btn = (targetFrame as typeof page).locator(sel).last();
+        // aria-disabled="false" = traitement vidéo terminé, bouton prêt
+        if (await btn.count() > 0
+            && await btn.getAttribute('aria-disabled').catch(() => 'true') !== 'true'
+            && await btn.isVisible().catch(() => false)) {
+          postBtn = btn;
+          break;
+        }
+      }
+      if (!postBtn) await page.waitForTimeout(3000);
+    }
+
+    if (!postBtn) {
+      return { success: false, error: 'Bouton Post jamais activé (traitement vidéo trop long ?)' };
+    }
+
+    // ── Set privacy to PUBLIC (sinon par défaut "Only me" = invisible) ───
+    if (opts.privacy !== 'private') {
+      console.log('[tiktok-browser] Setting privacy to public...');
+      await dismissPopups();
+      try {
+        // Ouvre le menu "Who can watch this video" (affiche la valeur courante)
+        const privacyTrigger = page.locator(
+          '[data-e2e="privacy-container"], [data-e2e*="privacy"], div[class*="privacy"]'
+        ).filter({ hasText: /Only me|Friends|Everyone|Public|Followers/i }).first();
+
+        if (await privacyTrigger.count() > 0) {
+          await privacyTrigger.click({ timeout: 8_000 }).catch(() => {});
+          await page.waitForTimeout(800);
+          // Sélectionne "Everyone" / "Public" dans le menu déroulant
+          const publicOpt = page.locator(
+            'li:has-text("Everyone"), li:has-text("Public"), div[role="option"]:has-text("Everyone"), span:has-text("Everyone")'
+          ).first();
+          if (await publicOpt.count() > 0) {
+            await publicOpt.click({ timeout: 8_000 }).catch(() => {});
+            await page.waitForTimeout(500);
+          }
+        }
+      } catch { /* on continue même si le réglage échoue */ }
+      if (process.env.TIKTOK_DEBUG_SHOTS === '1') {
+        await page.screenshot({ path: dataPath('debug-privacy.png'), fullPage: true }).catch(() => {});
       }
     }
 
-    if (!posted) {
-      return { success: false, error: 'Bouton Post introuvable — vérifie la session TikTok' };
+    // ── Type caption MAINTENANT (traitement vidéo terminé) ───────────────
+    // À ce stade TikTok a fini de traiter et a mis le nom de fichier comme
+    // description. On le remplace par notre vraie caption.
+    console.log('[tiktok-browser] Typing caption...');
+    await dismissPopups();
+    const editable = (targetFrame as typeof page)
+      .locator('div[contenteditable="true"], [data-e2e="video-desc"] [contenteditable="true"], .DraftEditor-root [contenteditable="true"]')
+      .first();
+    const typeTarget = (await editable.count().catch(() => 0)) > 0 ? editable : captionEl;
+
+    await typeTarget.click({ force: true });
+    await page.waitForTimeout(400);
+    await page.keyboard.press('Control+A').catch(() => {});
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Backspace').catch(() => {});
+    await page.waitForTimeout(300);
+    const maxCaption = opts.caption.substring(0, 2200);
+    await page.keyboard.type(maxCaption, { delay: 15 });
+    await page.waitForTimeout(1500);
+
+    if (process.env.TIKTOK_DEBUG_SHOTS === '1') {
+      await page.screenshot({ path: dataPath('debug-after-caption.png'), fullPage: true }).catch(() => {});
+    }
+
+    console.log('[tiktok-browser] Posting...');
+    await page.waitForTimeout(1000);
+
+    // DEBUG : capture l'écran avant le clic Post pour diagnostiquer l'overlay
+    if (process.env.TIKTOK_DEBUG_SHOTS === '1') {
+      await page.screenshot({ path: dataPath('debug-before-post.png'), fullPage: true }).catch(() => {});
+    }
+
+    // Ferme tout popup TikTok resté ouvert (dialogue content-checks, tooltips)
+    // avant de cliquer Post, sinon l'overlay intercepte le clic.
+    await dismissPopups();
+    await page.waitForTimeout(500);
+
+    try {
+      await postBtn.click({ timeout: 10_000 });
+    } catch {
+      console.log('[tiktok-browser] Overlay détecté — clic forcé...');
+      await postBtn.click({ force: true, timeout: 10_000 });
     }
 
     // ── Wait for success ───────────────────────────────────────────────────
@@ -242,6 +339,9 @@ export async function uploadViaBrowser(
     } catch {
       // Even if we can't detect success, the post might have gone through
       console.warn('[tiktok-browser] Could not confirm success via URL, checking for errors...');
+      if (process.env.TIKTOK_DEBUG_SHOTS === '1') {
+        await page.screenshot({ path: dataPath('debug-after-post.png'), fullPage: true }).catch(() => {});
+      }
       const errorEl = page.locator('[class*="error"], [data-e2e="upload-error"]').first();
       if (await errorEl.count() > 0) {
         const errText = await errorEl.textContent();

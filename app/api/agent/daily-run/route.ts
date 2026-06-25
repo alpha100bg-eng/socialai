@@ -58,7 +58,9 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL_ID = 'fal-ai/kling-video/v3/4k/text-to-video';
+// Wan 2.1 — 9:16 vertical @ 480p ≈ $0.20/vidéo (vs Kling 3.0 4K ≈ $1).
+// Budget : 30 vidéos/mois ≈ $6. Pour repasser sur Kling, remettre l'ancien MODEL_ID.
+const MODEL_ID = 'fal-ai/wan-t2v';
 const POLL_MAX = 170_000;
 const POLL_INT = 8_000;
 
@@ -217,16 +219,15 @@ export async function POST(req: NextRequest) {
       updatePublication(profileId, id, { falRequestId: wan2gpJobId });
       console.log(`[agent:${profileId}] Wan2GP job: ${wan2gpJobId}`);
     } else {
-      // fal.ai / Kling 3.0 fallback
+      // fal.ai / Wan 2.1 — 9:16 vertical @ 480p (bon marché pour TikTok)
       fal.config({ credentials: process.env.FAL_KEY });
       const handle = await fal.queue.submit(MODEL_ID, {
         input: {
-          prompt:          videoPrompt,
-          duration:        '5',
-          aspect_ratio:    '9:16',
-          negative_prompt: 'blur, distort, low quality, watermark, text overlay, logo, humans',
-          cfg_scale:       0.5,
-          generate_audio:  false,
+          prompt:           videoPrompt,
+          aspect_ratio:     '9:16',
+          resolution:       '480p',
+          negative_prompt:  'blur, distort, low quality, watermark, text overlay, logo, humans',
+          enable_prompt_expansion: true,
         },
       });
       falRequestId = handle.request_id;
@@ -253,7 +254,7 @@ export async function POST(req: NextRequest) {
           break;
         }
         if ((status as { status: string }).status === 'FAILED') {
-          throw new Error('Kling video generation failed on fal.ai');
+          throw new Error('Wan video generation failed on fal.ai');
         }
       }
     }
