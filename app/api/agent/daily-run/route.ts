@@ -274,10 +274,15 @@ export async function POST(req: NextRequest) {
     // ── 7a: Browser session ──────────────────────────────────────────────
     if (hasBrowserSession(profileId)) {
       console.log(`[agent:${profileId}] Publishing via browser session...`);
+      // Public par défaut (objectif = visibilité). On ne passe en privé que si
+      // la variable dit explicitement self/only/private/follower. Robuste aux
+      // formulations ("PUBLIC_TO_EVERYONE", "public", valeur absente → public).
+      const privacyEnv = (process.env.TIKTOK_PRIVACY_LEVEL ?? '').toLowerCase();
+      const isPrivate  = /self|only|private|follow/.test(privacyEnv);
       const result = await uploadViaBrowser({
         videoUrl,
         caption: fullCaption,
-        privacy: process.env.TIKTOK_PRIVACY_LEVEL === 'PUBLIC_TO_EVERYONE' ? 'public' : 'private',
+        privacy: isPrivate ? 'private' : 'public',
       }, profileId);
 
       if (result.success) {
