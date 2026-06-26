@@ -270,6 +270,7 @@ export async function POST(req: NextRequest) {
     let tikTokShareUrl  = '';
     let tikTokStatus    = '';
     let publishMethod   = 'none';
+    let browserError    = '';
 
     // ── 7a: Browser session ──────────────────────────────────────────────
     if (hasBrowserSession(profileId)) {
@@ -291,6 +292,7 @@ export async function POST(req: NextRequest) {
         publishMethod  = 'browser';
         console.log(`[agent:${profileId}] Browser publish success`);
       } else {
+        browserError = result.error ?? 'unknown browser error';
         console.warn(`[agent:${profileId}] Browser upload failed:`, result.error);
       }
     }
@@ -358,6 +360,7 @@ export async function POST(req: NextRequest) {
         publishedAt:  new Date().toISOString(),
         durationMs:   Date.now() - startMs,
         tikTokStatus: 'SKIPPED_NOT_CONFIGURED',
+        error:        browserError ? `browser: ${browserError}`.slice(0, 800) : undefined,
       });
       return NextResponse.json({
         success: true, id, profileId, slot, topic, videoUrl, caption, hashtags,
