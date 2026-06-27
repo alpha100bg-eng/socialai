@@ -21,8 +21,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const name = new URL(req.url).searchParams.get('name') || 'fail';
-  const file = name === 'nav' ? 'debug-nav.png' : 'debug-fail.png';
+  const name  = new URL(req.url).searchParams.get('name') || 'fail';
+  const files: Record<string, string> = {
+    nav:    'debug-nav.png',
+    upload: 'debug-upload.png',
+    fail:   'debug-fail.png',
+  };
+  const file = files[name] ?? 'debug-fail.png';
   const p    = dataPath(file);
 
   try {

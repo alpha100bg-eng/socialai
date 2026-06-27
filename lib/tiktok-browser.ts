@@ -55,6 +55,7 @@ async function downloadToTemp(url: string): Promise<string> {
       if (!res.ok) throw new Error(`Video download failed: ${res.status} ${res.statusText}`);
       const buf = Buffer.from(await res.arrayBuffer());
       fs.writeFileSync(dest, buf);
+      console.log(`[tiktok-browser] Downloaded ${buf.length} bytes to ${dest}`);
       return dest;
     } catch (e) {
       lastErr = e;
@@ -139,7 +140,7 @@ export async function uploadViaBrowser(
 
     // DEBUG : capture la page juste après navigation (pour voir ce que TikTok
     // affiche sur le serveur : vraie page d'upload ? vérification ? captcha ?)
-    await page.screenshot({ path: dataPath('debug-nav.png'), fullPage: true }).catch(() => {});
+    await page.screenshot({ path: dataPath('debug-nav.png') }).catch(() => {});
 
     // ── Find the file input across page + all frames (poll up to 60s) ─────
     // Le champ <input type=file> est souvent présent mais caché derrière une
@@ -177,6 +178,10 @@ export async function uploadViaBrowser(
     console.log('[tiktok-browser] Uploading video file...');
     await fileInputLocator.setInputFiles(tempFile, { timeout: 60_000 });
 
+    // DEBUG : capture ~8s après l'envoi pour voir si l'upload démarre vraiment
+    await page.waitForTimeout(8000);
+    await page.screenshot({ path: dataPath('debug-upload.png') }).catch(() => {});
+
     // ── Wait for upload + processing (up to 3 min) ────────────────────────
     console.log('[tiktok-browser] Waiting for video processing...');
 
@@ -206,7 +211,7 @@ export async function uploadViaBrowser(
 
     if (!captionEl) {
       // DEBUG : capture l'écran pour voir pourquoi le champ n'apparaît pas
-      await page.screenshot({ path: dataPath('debug-fail.png'), fullPage: true }).catch(() => {});
+      await page.screenshot({ path: dataPath('debug-fail.png') }).catch(() => {});
       return { success: false, error: `Champ description introuvable — page: ${page.url()}` };
     }
 
