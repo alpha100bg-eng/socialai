@@ -45,14 +45,23 @@ export function hasBrowserSession(profileId: string = DEFAULT_NICHE): boolean {
   return fs.existsSync(sessionPath(profileId));
 }
 
-/** Download a remote video to a local temp file */
+/** Download a remote video to a local temp file (timeout + 1 retry) */
 async function downloadToTemp(url: string): Promise<string> {
   const dest = path.join(os.tmpdir(), `tt-upload-${Date.now()}.mp4`);
-  const res  = await fetch(url);
-  if (!res.ok) throw new Error(`Video download failed: ${res.status} ${res.statusText}`);
-  const buf  = Buffer.from(await res.arrayBuffer());
-  fs.writeFileSync(dest, buf);
-  return dest;
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(90_000) });
+      if (!res.ok) throw new Error(`Video download failed: ${res.status} ${res.statusText}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      fs.writeFileSync(dest, buf);
+      return dest;
+    } catch (e) {
+      lastErr = e;
+      console.warn(`[tiktok-browser] Download attempt ${attempt} failed:`, e);
+    }
+  }
+  throw new Error(`Video download failed after 2 attempts: ${lastErr}`);
 }
 
 /** Upload a video to TikTok using browser automation */
@@ -99,6 +108,10 @@ export async function uploadViaBrowser(
     if (cookies?.length) await context.addCookies(cookies);
 
     const page = await context.newPage();
+
+    // Filet de sécurité : aucune action Playwright ne doit pendre indéfiniment
+    page.setDefaultTimeout(60_000);
+    page.setDefaultNavigationTimeout(60_000);
 
     // Mask automation
     await page.addInitScript(() => {
@@ -370,7 +383,13 @@ export async function uploadViaBrowser(
     return { success: false, error: msg };
 
   } finally {
-    if (browser) await browser.close();
+    // browser.close() peut pendre dans Docker headless → on le borne à 15s
+    if (browser) {
+      await Promise.race([
+        browser.close(),
+        new Promise((r) => setTimeout(r, 15_000)),
+      ]).catch(() => {});
+    }
     if (tempFile && fs.existsSync(tempFile)) {
       try { fs.unlinkSync(tempFile); } catch { /* ignore */ }
     }
