@@ -14,7 +14,11 @@ COPY . .
 RUN npm run build
 
 ENV NODE_ENV=production
+# Active le mode "avec écran" (Chromium non-headless) sous écran virtuel Xvfb
+ENV HEADFUL_XVFB=1
 # Railway fournit PORT (8080) ; `next start` le lit automatiquement
 EXPOSE 8080
 
-CMD ["npm", "start"]
+# xvfb-run fournit un écran virtuel pour Chromium (plus stable que headless
+# sur TikTok). xvfb est inclus dans l'image officielle Playwright.
+CMD ["xvfb-run", "-a", "--server-args=-screen 0 1280x1024x24", "npm", "start"]

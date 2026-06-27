@@ -91,8 +91,11 @@ export async function uploadViaBrowser(
     console.log(`[tiktok-browser] Video downloaded: ${tempFile}`);
 
     // ── Launch browser with saved session ─────────────────────────────────
+    // Sur le serveur (Railway), on lance le navigateur en mode "avec écran"
+    // (headless:false) dans un écran virtuel Xvfb — plus stable que headless
+    // sur les pages lourdes comme TikTok (évite les crashes du renderer).
     browser = await chromium.launch({
-      headless: true,
+      headless: process.env.HEADFUL_XVFB === '1' ? false : true,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
