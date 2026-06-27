@@ -216,9 +216,17 @@ export async function uploadViaBrowser(
     }
 
     if (!captionEl) {
-      // DEBUG : capture l'écran pour voir pourquoi le champ n'apparaît pas
+      // Diagnostics remontés dans l'erreur (lisible via l'API)
+      let vidBytes = 0;
+      try { vidBytes = fs.statSync(tempFile!).size; } catch { /* ignore */ }
+      const bodyText = await page.locator('body').innerText().catch(() => '');
+      const snippet  = bodyText.replace(/\s+/g, ' ').slice(0, 200);
+      const nbInputs = await page.locator('input[type="file"]').count().catch(() => -1);
       await page.screenshot({ path: dataPath('debug-fail.png') }).catch(() => {});
-      return { success: false, error: `Champ description introuvable — page: ${page.url()}` };
+      return {
+        success: false,
+        error: `Champ description introuvable. vid=${vidBytes}o inputs=${nbInputs} url=${page.url()} | page="${snippet}"`,
+      };
     }
 
     // ── Dismiss TikTok popups that steal focus / block the Post button ────
