@@ -124,6 +124,10 @@ export async function uploadViaBrowser(
     // Laisse le studio charger (React + iframes éventuels)
     await page.waitForTimeout(5000);
 
+    // DEBUG : capture la page juste après navigation (pour voir ce que TikTok
+    // affiche sur le serveur : vraie page d'upload ? vérification ? captcha ?)
+    await page.screenshot({ path: dataPath('debug-nav.png'), fullPage: true }).catch(() => {});
+
     // ── Find the file input across page + all frames (poll up to 60s) ─────
     // Le champ <input type=file> est souvent présent mais caché derrière une
     // drop-zone, et peut vivre dans un iframe creator/studio.
@@ -172,17 +176,25 @@ export async function uploadViaBrowser(
       'div[class*="editor"] [contenteditable]',
     ];
 
+    // Poll all selectors together (up to 120s) — échoue plus vite si la page
+    // n'est pas la bonne, au lieu d'attendre 180s par sélecteur.
     let captionEl;
-    for (const sel of captionSelectors) {
-      try {
-        await (targetFrame as typeof page).waitForSelector(sel, { timeout: 180_000 });
-        captionEl = (targetFrame as typeof page).locator(sel).first();
-        break;
-      } catch { continue; }
+    const capDeadline = Date.now() + 120_000;
+    while (Date.now() < capDeadline && !captionEl) {
+      for (const sel of captionSelectors) {
+        const el = (targetFrame as typeof page).locator(sel).first();
+        if (await el.count().catch(() => 0) > 0 && await el.isVisible().catch(() => false)) {
+          captionEl = el;
+          break;
+        }
+      }
+      if (!captionEl) await page.waitForTimeout(2500);
     }
 
     if (!captionEl) {
-      return { success: false, error: 'Impossible de trouver le champ description TikTok' };
+      // DEBUG : capture l'écran pour voir pourquoi le champ n'apparaît pas
+      await page.screenshot({ path: dataPath('debug-fail.png'), fullPage: true }).catch(() => {});
+      return { success: false, error: `Champ description introuvable — page: ${page.url()}` };
     }
 
     // ── Dismiss TikTok popups that steal focus / block the Post button ────
