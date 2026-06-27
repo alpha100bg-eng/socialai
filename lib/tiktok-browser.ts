@@ -97,11 +97,9 @@ export async function uploadViaBrowser(
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
         '--disable-dev-shm-usage',
-        // Réduction mémoire pour conteneur Railway contraint (évite les crashes
-        // du renderer qui empêchent l'éditeur TikTok d'apparaître)
+        // Réduction mémoire pour conteneur Railway contraint (sans --single-process
+        // ni --no-zygote qui font crasher le navigateur)
         '--disable-gpu',
-        '--no-zygote',
-        '--single-process',
         '--disable-setuid-sandbox',
         '--disable-accelerated-2d-canvas',
         '--disable-extensions',
