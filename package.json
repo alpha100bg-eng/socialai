@@ -9,7 +9,8 @@
     "postinstall": "playwright install --with-deps chromium",
     "lint": "eslint",
     "tiktok:login": "node scripts/tiktok-login.mjs",
-    "tiktok:check": "node -e \"const f=require('fs');const p='data/tiktok-session.json';console.log(f.existsSync(p)?'Session TikTok OK':'Pas de session. Lance: npm run tiktok:login')\""
+    "tiktok:check": "node -e \"const f=require('fs');const p='data/tiktok-session.json';console.log(f.existsSync(p)?'Session TikTok OK':'Pas de session. Lance: npm run tiktok:login')\"",
+    "gh:post": "tsx scripts/gh-post.ts"
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.6",
@@ -30,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

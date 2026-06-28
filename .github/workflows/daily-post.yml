@@ -1,0 +1,39 @@
+name: Daily TikTok Post
+
+# Lance le robot chaque jour à 10:00 UTC (et permet un lancement manuel)
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Profil/niche à poster (animals, motivation, food, space, travel)'
+        required: false
+        default: 'animals'
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Installer les dépendances
+        run: npm ci
+
+      - name: Installer Chromium (navigateur)
+        run: npx playwright install --with-deps chromium
+
+      - name: Générer + Publier sur TikTok
+        run: npm run gh:post
+        env:
+          RAILWAY_URL:         ${{ secrets.RAILWAY_URL }}
+          CRON_SECRET:         ${{ secrets.CRON_SECRET }}
+          ADMIN_UPLOAD_SECRET: ${{ secrets.ADMIN_UPLOAD_SECRET }}
+          PROFILE_ID:          ${{ github.event.inputs.profile || 'animals' }}
