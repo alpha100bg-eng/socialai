@@ -74,6 +74,19 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function CopyAllButton({ caption, hashtags }: { caption: string; hashtags: string[] }) {
+  const [copied, setCopied] = useState(false);
+  const text = `${caption}\n\n${hashtags.map((h) => `#${h}`).join(' ')}`;
+  return (
+    <button
+      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-xl bg-white/8 text-white/70 border border-white/15 hover:bg-white/15 transition-colors">
+      {copied ? <Check size={12} className="text-green-400" /> : <Copy size={12} />}
+      {copied ? 'Copié !' : 'Copier caption + hashtags'}
+    </button>
+  );
+}
+
 function StepBadge({ step, label, done, active }: { step: number; label: string; done: boolean; active: boolean }) {
   return (
     <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-all
@@ -278,6 +291,16 @@ function PublicationRow({ pub, profileId, defaultOpen = false }: { pub: Publicat
                         </span>
                       ))}
                     </div>
+                  </div>
+                )}
+                {/* Actions semi-auto : télécharger la vidéo + copier caption+hashtags */}
+                {pub.videoUrl && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <a href={pub.videoUrl} target="_blank" rel="noopener noreferrer" download
+                      className="flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-xl bg-pink-500/20 text-pink-300 border border-pink-500/30 hover:bg-pink-500/30 transition-colors">
+                      <Video size={12} /> Télécharger la vidéo
+                    </a>
+                    <CopyAllButton caption={pub.caption} hashtags={pub.hashtags ?? []} />
                   </div>
                 )}
               </div>

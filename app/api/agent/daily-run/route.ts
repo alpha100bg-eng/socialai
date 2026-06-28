@@ -273,7 +273,11 @@ export async function POST(req: NextRequest) {
     let browserError    = '';
 
     // ── 7a: Browser session ──────────────────────────────────────────────
-    if (hasBrowserSession(profileId)) {
+    // Mode semi-auto : si DISABLE_BROWSER_POST=1 (serveur Railway), on NE tente
+    // PAS le post navigateur (instable sur serveur). On génère juste la vidéo +
+    // caption, prêtes à poster manuellement depuis le dashboard / l'appli TikTok.
+    const browserPostDisabled = process.env.DISABLE_BROWSER_POST === '1';
+    if (!browserPostDisabled && hasBrowserSession(profileId)) {
       console.log(`[agent:${profileId}] Publishing via browser session...`);
       // Public par défaut (objectif = visibilité). On ne passe en privé que si
       // la variable dit explicitement self/only/private/follower. Robuste aux
@@ -352,19 +356,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── 7c: No TikTok configured ──────────────────────────────────────────
+    // ── 7c: Pas de post auto → vidéo prête à poster manuellement ──────────
     if (publishMethod === 'none') {
       updatePublication(profileId, id, {
         status:       'published',
         caption, hashtags, videoUrl, topic, videoPrompt,
         publishedAt:  new Date().toISOString(),
         durationMs:   Date.now() - startMs,
-        tikTokStatus: 'SKIPPED_NOT_CONFIGURED',
+        tikTokStatus: browserPostDisabled ? 'READY_FOR_MANUAL' : 'SKIPPED_NOT_CONFIGURED',
         error:        browserError ? `browser: ${browserError}`.slice(0, 800) : undefined,
       });
       return NextResponse.json({
         success: true, id, profileId, slot, topic, videoUrl, caption, hashtags,
-        warning: 'TikTok non configuré — vidéo générée mais non publiée. Lance npm run tiktok:login',
+        warning: browserPostDisabled
+          ? 'Vidéo prête à poster ! Télécharge-la depuis le dashboard et publie via l\'appli TikTok.'
+          : 'TikTok non configuré — vidéo générée mais non publiée.',
       });
     }
 
