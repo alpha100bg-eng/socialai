@@ -19,10 +19,11 @@ import { uploadViaBrowser } from '../lib/tiktok-browser';
 import { dataPath }         from '../lib/data-dir';
 import { DEFAULT_NICHE }    from '../lib/niches';
 
-const RAILWAY = process.env.RAILWAY_URL || 'https://socialai-production-fb02.up.railway.app';
-const CRON    = process.env.CRON_SECRET || '';
-const ADMIN   = process.env.ADMIN_UPLOAD_SECRET || '';
-const PROFILE = process.env.PROFILE_ID || DEFAULT_NICHE;
+// URL Railway en dur (non secrète) — évite tout souci de secret mal collé.
+const RAILWAY = 'https://socialai-production-fb02.up.railway.app';
+const CRON    = (process.env.CRON_SECRET || '').trim();
+const ADMIN   = (process.env.ADMIN_UPLOAD_SECRET || '').trim();
+const PROFILE = (process.env.PROFILE_ID || DEFAULT_NICHE).trim();
 
 function buildCaption(caption: string, hashtags: string[]): string {
   const tags = (hashtags || []).map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ');
