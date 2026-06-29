@@ -15,6 +15,8 @@
 
 import fs   from 'fs';
 import path from 'path';
+import os   from 'os';
+import { execFileSync }      from 'child_process';
 import { uploadViaBrowser } from '../lib/tiktok-browser';
 import { dataPath }         from '../lib/data-dir';
 import { DEFAULT_NICHE }    from '../lib/niches';
@@ -60,16 +62,70 @@ async function main() {
   if (!data.videoUrl) throw new Error(`Génération échouée: ${data.error ?? JSON.stringify(data)}`);
   console.log(`[gh-post] Vidéo prête: ${data.topic}`);
 
-  // ── 3. Poste sur TikTok (navigateur, runner GitHub) ──────────────────────
+  // ── 3. Ajoute une musique GRATUITEMENT via ffmpeg (si des musiques existent)
+  const localVideo: string | undefined = await addMusic(data.videoUrl);
+
+  // ── 4. Poste sur TikTok (navigateur, runner GitHub) ──────────────────────
   const fullCaption = buildCaption(data.caption ?? '', data.hashtags ?? []);
   console.log('[gh-post] Publication sur TikTok...');
   const result = await uploadViaBrowser(
-    { videoUrl: data.videoUrl, caption: fullCaption, privacy: 'public' },
+    { videoUrl: data.videoUrl, videoPath: localVideo, caption: fullCaption, privacy: 'public' },
     PROFILE,
   );
 
   if (!result.success) throw new Error(`Publication échouée: ${result.error}`);
   console.log('[gh-post] ✅ Publié sur TikTok !');
+}
+
+/**
+ * Télécharge la vidéo (muette) et y colle une musique aléatoire du dossier
+ * music/<profil>/ (ou music/) via ffmpeg — gratuit, sur le runner GitHub.
+ * Retourne le chemin du fichier local, ou undefined si pas de musique
+ * (dans ce cas on postera la vidéo telle quelle via son URL).
+ */
+async function addMusic(videoUrl: string): Promise<string | undefined> {
+  // Cherche des musiques dans music/<profil>/ puis music/
+  const dirs = [path.join('music', PROFILE), 'music'];
+  let tracks: string[] = [];
+  let musicDir = '';
+  for (const d of dirs) {
+    if (fs.existsSync(d)) {
+      const found = fs.readdirSync(d).filter((f) => /\.(mp3|m4a|aac|wav|ogg)$/i.test(f));
+      if (found.length > 0) { tracks = found; musicDir = d; break; }
+    }
+  }
+  if (tracks.length === 0) {
+    console.log('[gh-post] Aucune musique trouvée — vidéo postée sans musique ajoutée.');
+    return undefined;
+  }
+
+  const track = path.join(musicDir, tracks[Math.floor(Math.random() * tracks.length)]);
+  console.log(`[gh-post] Musique choisie: ${track}`);
+
+  // Télécharge la vidéo
+  const tmpDir  = fs.mkdtempSync(path.join(os.tmpdir(), 'ghpost-'));
+  const inVid   = path.join(tmpDir, 'in.mp4');
+  const outVid  = path.join(tmpDir, 'out.mp4');
+  const res = await fetch(videoUrl, { signal: AbortSignal.timeout(90_000) });
+  if (!res.ok) { console.warn('[gh-post] Téléchargement vidéo échoué, post sans musique.'); return undefined; }
+  fs.writeFileSync(inVid, Buffer.from(await res.arrayBuffer()));
+
+  // Colle la musique (boucle si trop courte, coupe à la longueur de la vidéo)
+  try {
+    execFileSync('ffmpeg', [
+      '-y',
+      '-i', inVid,
+      '-stream_loop', '-1', '-i', track,
+      '-map', '0:v:0', '-map', '1:a:0',
+      '-shortest', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
+      outVid,
+    ], { stdio: 'pipe' });
+    console.log('[gh-post] Musique ajoutée ✓');
+    return outVid;
+  } catch (e) {
+    console.warn('[gh-post] ffmpeg a échoué, post sans musique:', e instanceof Error ? e.message : e);
+    return undefined;
+  }
 }
 
 main().catch((e) => {

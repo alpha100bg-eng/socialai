@@ -22,9 +22,10 @@ async function getPlaywright() {
 }
 
 export interface BrowserUploadOptions {
-  videoUrl:  string;   // public URL (fal.ai URL works directly)
-  caption:   string;   // full caption with hashtags, max 2200 chars
-  privacy?:  'public' | 'private';
+  videoUrl:   string;   // public URL (fal.ai URL works directly)
+  videoPath?: string;   // OU un fichier local déjà prêt (ex: vidéo + musique)
+  caption:    string;   // full caption with hashtags, max 2200 chars
+  privacy?:   'public' | 'private';
 }
 
 export interface BrowserUploadResult {
@@ -85,10 +86,15 @@ export async function uploadViaBrowser(
   let   tempFile: string | null = null;
 
   try {
-    // ── Download video to local temp ──────────────────────────────────────
-    console.log('[tiktok-browser] Downloading video...');
-    tempFile = await downloadToTemp(opts.videoUrl);
-    console.log(`[tiktok-browser] Video downloaded: ${tempFile}`);
+    // ── Fichier local fourni (ex: vidéo + musique) OU téléchargement ──────
+    if (opts.videoPath && fs.existsSync(opts.videoPath)) {
+      tempFile = opts.videoPath;
+      console.log(`[tiktok-browser] Using local video file: ${tempFile}`);
+    } else {
+      console.log('[tiktok-browser] Downloading video...');
+      tempFile = await downloadToTemp(opts.videoUrl);
+      console.log(`[tiktok-browser] Video downloaded: ${tempFile}`);
+    }
 
     // ── Launch browser with saved session ─────────────────────────────────
     browser = await chromium.launch({
