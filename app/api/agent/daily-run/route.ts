@@ -260,6 +260,25 @@ export async function POST(req: NextRequest) {
     }
 
     if (!videoUrl) throw new Error('Video generation timed out (3 min exceeded)');
+
+    // ── Step 6b: Add AI sound to the silent video (MMAudio, ~$0.005) ──────
+    // La vidéo Wan est muette → on génère un son adapté à la niche et on le
+    // colle dessus. Non bloquant : si ça échoue, on garde la vidéo muette.
+    try {
+      console.log(`[agent:${profileId}] Adding audio via MMAudio...`);
+      fal.config({ credentials: process.env.FAL_KEY });
+      const audioRes = await fal.subscribe('fal-ai/mmaudio-v2', {
+        input: { video_url: videoUrl, prompt: niche.audioPrompt, num_steps: 25 },
+      });
+      const aData = audioRes.data as { video?: { url: string } };
+      if (aData?.video?.url) {
+        videoUrl = aData.video.url;
+        console.log(`[agent:${profileId}] Audio added ✓`);
+      }
+    } catch (e) {
+      console.warn(`[agent:${profileId}] MMAudio failed (keeping silent video):`, e);
+    }
+
     updatePublication(profileId, id, { videoUrl, videoReadyAt: new Date().toISOString() });
 
     console.log(`[agent:${profileId}] Video ready: ${videoUrl.slice(0, 80)}...`);

@@ -23,6 +23,8 @@ export interface NicheConfig {
   categories: string[];
   /** Visual style description injected into the Kling/video prompt */
   videoStyle: string;
+  /** Audio description injected into MMAudio to add sound to the silent video */
+  audioPrompt: string;
   /** 5 "mega" hashtags always included (no # prefix) */
   megaHashtags: string[];
   /** Safety rules specific to this niche, injected into the safety-check prompt */
@@ -47,6 +49,7 @@ export const NICHES: Record<string, NicheConfig> = {
       'animals displaying stunning survival instincts',
     ],
     videoStyle: 'photorealistic wildlife documentary, BBC Planet Earth / Netflix visual quality, golden hour or blue hour lighting',
+    audioPrompt: 'immersive nature ambience: gentle wind, birds chirping, soft wildlife sounds, calm forest or savanna atmosphere',
     megaHashtags: ['animaltiktok', 'fyp', 'viral', 'animals', 'cuteanimals'],
     safetyRules: 'NEVER depict animal death, injury, violence, or suffering. Family-friendly, positive, or educational only.',
     persona: 'a viral TikTok account celebrating wildlife and pets — warm, emotional, and heartwarming',
@@ -67,6 +70,7 @@ export const NICHES: Record<string, NicheConfig> = {
       'a quiet victory after years of unseen effort',
     ],
     videoStyle: 'cinematic and inspirational, golden hour or dramatic blue-hour lighting, silhouettes, slow dolly or drone shots, epic but grounded mood',
+    audioPrompt: 'epic uplifting cinematic background music, inspiring orchestral build-up, motivational and powerful',
     megaHashtags: ['motivation', 'fyp', 'mindset', 'selfimprovement', 'discipline'],
     safetyRules: 'No violence, no real identifiable people, no medical/financial advice claims. Purely visual + text motivation.',
     persona: 'a viral TikTok motivation/mindset account — cinematic visuals paired with short, powerful messages about discipline and growth',
@@ -87,6 +91,7 @@ export const NICHES: Record<string, NicheConfig> = {
       'a street-food style dish being assembled',
     ],
     videoStyle: 'macro food photography, vibrant saturated colors, shallow depth of field, "food porn" satisfying close-up style, soft studio lighting',
+    audioPrompt: 'satisfying ASMR cooking sounds: sizzling, chopping, bubbling, soft crispy textures, cozy kitchen ambience',
     megaHashtags: ['foodtiktok', 'fyp', 'foodie', 'recipe', 'foodporn'],
     safetyRules: 'No raw meat depicted unsafely, no choking hazards implied, no alcohol-focused content. Appetizing and family-friendly only.',
     persona: 'a viral TikTok food account — mouth-watering close-ups of dishes and recipes with short, punchy captions',
@@ -107,6 +112,7 @@ export const NICHES: Record<string, NicheConfig> = {
       'a meteor shower streaking across a deep night sky',
     ],
     videoStyle: 'sci-fi cinematic, deep space color palette (blues, purples, neon accents), slow majestic camera movement, ultra high detail, awe-inspiring scale',
+    audioPrompt: 'deep ambient cinematic space drone, ethereal cosmic tones, mysterious and awe-inspiring atmosphere',
     megaHashtags: ['space', 'fyp', 'science', 'didyouknow', 'universe'],
     safetyRules: 'Facts must sound plausible (no obviously false claims). No fear-mongering or doomsday content.',
     persona: 'a viral TikTok "did you know" account about space and science — jaw-dropping visuals with a surprising fact in the caption',
@@ -127,6 +133,7 @@ export const NICHES: Record<string, NicheConfig> = {
       'a waterfall hidden deep in a tropical jungle',
     ],
     videoStyle: 'cinematic travel photography, drone aerial shots or slow pans, vibrant natural colors, golden hour lighting, aspirational and immersive mood',
+    audioPrompt: 'relaxing ambient travel music with gentle nature or city atmosphere, dreamy and aspirational',
     megaHashtags: ['traveltiktok', 'fyp', 'travel', 'wanderlust', 'explore'],
     safetyRules: 'No depictions of real identifiable people, no dangerous stunts implied. Aspirational and positive only.',
     persona: 'a viral TikTok travel account showcasing dream destinations — cinematic visuals with a short, evocative caption inviting people to imagine being there',
