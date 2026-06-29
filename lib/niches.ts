@@ -49,7 +49,7 @@ export const NICHES: Record<string, NicheConfig> = {
       'animals displaying stunning survival instincts',
     ],
     videoStyle: 'photorealistic wildlife documentary, BBC Planet Earth / Netflix visual quality, golden hour or blue hour lighting',
-    audioPrompt: 'immersive nature ambience: gentle wind, birds chirping, soft wildlife sounds, calm forest or savanna atmosphere',
+    audioPrompt: 'soft emotional cinematic piano music, gentle heartwarming melody, calm and touching background score, no sound effects',
     megaHashtags: ['animaltiktok', 'fyp', 'viral', 'animals', 'cuteanimals'],
     safetyRules: 'NEVER depict animal death, injury, violence, or suffering. Family-friendly, positive, or educational only.',
     persona: 'a viral TikTok account celebrating wildlife and pets — warm, emotional, and heartwarming',
