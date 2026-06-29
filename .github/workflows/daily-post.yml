@@ -1,9 +1,10 @@
 name: Daily TikTok Post
 
-# Lance le robot chaque jour à 10:00 UTC (et permet un lancement manuel)
+# Lance le robot chaque jour à 17:00 UTC = 19h Belgique (été) / 18h (hiver)
+# (heure du soir, bonne pour l'engagement TikTok ; lancement manuel possible)
 on:
   schedule:
-    - cron: '0 10 * * *'
+    - cron: '0 17 * * *'
   workflow_dispatch:
     inputs:
       profile:
