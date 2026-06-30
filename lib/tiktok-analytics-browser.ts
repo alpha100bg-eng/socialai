@@ -85,38 +85,32 @@ export async function readPostAnalytics(
     await page.waitForTimeout(7000);
     await page.screenshot({ path: dataPath('debug-analytics.png') }).catch(() => {});
 
-    // Scrape générique : chaque "ligne" de post contient une description + des
-    // nombres (vues/likes/commentaires). On lit le DOM de façon défensive.
-    const stats: PostStat[] = await page.evaluate(() => {
-      const toNum = (t: string): number => {
-        const s = (t || '').trim().toLowerCase().replace(/\s/g, '').replace(',', '.');
-        const m = s.match(/^([\d.]+)\s*([km]?)/);
-        if (!m) return 0;
-        const n = parseFloat(m[1]) || 0;
-        return m[2] === 'k' ? Math.round(n * 1e3) : m[2] === 'm' ? Math.round(n * 1e6) : Math.round(n);
-      };
-      const rows = Array.from(document.querySelectorAll(
-        '[class*="PostInfoCell"], [class*="content_card"], [data-tt*="components_PostItem"], li[class*="post"], div[class*="ContentCard"]',
-      ));
-      const out: { desc: string; views: number; likes: number; comments: number; shares: number }[] = [];
-      for (const row of rows) {
+    // Scrape : on extrait UNIQUEMENT le texte brut des lignes dans le navigateur
+    // (aucune fonction nommée ici → évite le bug esbuild "__name is not defined").
+    // Le calcul des nombres se fait côté Node (parseCount).
+    const rawRows: { desc: string; text: string }[] = await page.evaluate(() => {
+      const sel = '[class*="PostInfoCell"], [class*="content_card"], [data-tt*="components_PostItem"], li[class*="post"], div[class*="ContentCard"], [class*="ContentItem"]';
+      return Array.from(document.querySelectorAll(sel)).map((row) => {
         const txt = (row as HTMLElement).innerText || '';
-        // Trouve les nombres (vues, likes, comments) — heuristique
-        const nums = (txt.match(/[\d.,]+\s*[KMkm]?/g) || []).map(toNum).filter((n) => n >= 0);
-        const descEl = row.querySelector('[class*="desc"], [class*="title"], a[href*="/video/"]');
-        const desc = (descEl as HTMLElement)?.innerText?.trim() || txt.split('\n')[0] || '';
-        if (desc) {
-          out.push({
-            desc,
-            views:    nums[0] ?? 0,
-            likes:    nums[1] ?? 0,
-            comments: nums[2] ?? 0,
-            shares:   nums[3] ?? 0,
-          });
-        }
-      }
-      return out;
+        const d   = row.querySelector('[class*="desc"], [class*="title"], a[href*="/video/"]');
+        const desc = (d && (d as HTMLElement).innerText ? (d as HTMLElement).innerText.trim() : (txt.split('\n')[0] || ''));
+        return { desc, text: txt };
+      });
     });
+
+    // Parsing des nombres côté Node
+    const stats: PostStat[] = [];
+    for (const r of rawRows) {
+      if (!r.desc) continue;
+      const nums = (r.text.match(/[\d.,]+\s*[KMkm]?/g) || []).map(parseCount);
+      stats.push({
+        desc: r.desc,
+        views:    nums[0] ?? 0,
+        likes:    nums[1] ?? 0,
+        comments: nums[2] ?? 0,
+        shares:   nums[3] ?? 0,
+      });
+    }
 
     if (stats.length === 0) {
       // Parsing raté → renvoie un dump pour pouvoir ajuster les sélecteurs
