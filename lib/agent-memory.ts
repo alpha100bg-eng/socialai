@@ -37,6 +37,7 @@ export interface AgentMemory {
   avgScore:           number;              // rolling average 0–10
   totalPublished:     number;
   recentPerformance:  PerformanceRecord[]; // last 30 records
+  strategistDirectives?: string;           // Robot Analytics directives for next video
   lastUpdated:        string;
 }
 
@@ -49,6 +50,7 @@ const DEFAULT_MEMORY: AgentMemory = {
   avgScore:          0,
   totalPublished:    0,
   recentPerformance: [],
+  strategistDirectives: '',
   lastUpdated:       new Date().toISOString(),
 };
 
@@ -166,9 +168,15 @@ export function recordPerformance(
  * Injected into Groq prompts so the agent learns from past performance.
  */
 export function getMemoryBoost(memory: AgentMemory): string {
-  if (memory.totalPublished === 0) return '';
+  // Les directives de Robot Analytics priment (même sans vidéo encore scorée)
+  const directives = memory.strategistDirectives
+    ? `\n\n---\n🤖 ROBOT ANALYTICS — DIRECTIVES POUR CETTE VIDÉO (priorité absolue) :\n${memory.strategistDirectives}`
+    : '';
+
+  if (memory.totalPublished === 0) return directives;
 
   const parts: string[] = [
+    directives,
     `\n\n---\nLEARNED FROM ${memory.totalPublished} PUBLISHED VIDEOS (avg score: ${memory.avgScore.toFixed(1)}/10):`,
   ];
 

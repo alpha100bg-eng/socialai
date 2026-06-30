@@ -11,9 +11,28 @@
 import { NextRequest, NextResponse }                 from 'next/server';
 import { getPublications, updatePublication, type Publication } from '@/lib/agent-store';
 import { loadMemory, saveMemory, recordPerformance } from '@/lib/agent-memory';
-import { DEFAULT_NICHE }                              from '@/lib/niches';
+import { DEFAULT_NICHE, getNiche }                    from '@/lib/niches';
+import { buildAnalystPrompt, parseAnalystOutput, type PerfLine } from '@/lib/analyst';
 
 export const dynamic = 'force-dynamic';
+
+const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
+
+async function groq(prompt: string): Promise<string> {
+  const res = await fetch(GROQ_API, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+    body: JSON.stringify({
+      model:       'llama-3.3-70b-versatile',
+      max_tokens:  500,
+      temperature: 0.7,
+      response_format: { type: 'json_object' },
+      messages:    [{ role: 'user', content: prompt }],
+    }),
+  });
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content?.trim() ?? '';
+}
 
 interface StatItem { desc: string; views: number; likes: number; comments: number; shares: number; }
 
@@ -76,6 +95,23 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Robot Analytics : diagnostic + directives pour la prochaine vidéo ────
+  let diagnostic = '';
+  try {
+    const niche = getNiche(profileId);
+    const perf: PerfLine[] = memory.recentPerformance.slice(0, 12).map((r) => ({
+      topic: r.topic, views: r.views, likes: r.likes, comments: r.comments, shares: r.shares,
+    }));
+    const raw = await groq(buildAnalystPrompt(niche, perf));
+    const out = parseAnalystOutput(raw);
+    if (out) {
+      memory = { ...memory, strategistDirectives: out.directives };
+      diagnostic = out.diagnostic;
+    }
+  } catch (e) {
+    console.warn('[learn] Robot Analytics failed:', e);
+  }
+
   saveMemory(profileId, memory);
 
   return NextResponse.json({
@@ -83,6 +119,8 @@ export async function POST(req: NextRequest) {
     received: stats.length,
     matched,
     scored,
+    diagnostic,
+    directives: memory.strategistDirectives,
     memory: {
       totalPublished:    memory.totalPublished,
       avgScore:          memory.avgScore.toFixed(2),
