@@ -85,37 +85,35 @@ export async function readPostAnalytics(
     await page.waitForTimeout(7000);
     await page.screenshot({ path: dataPath('debug-analytics.png') }).catch(() => {});
 
-    // Scrape : on extrait UNIQUEMENT le texte brut des lignes dans le navigateur
-    // (aucune fonction nommée ici → évite le bug esbuild "__name is not defined").
-    // Le calcul des nombres se fait côté Node (parseCount).
-    const rawRows: { desc: string; text: string }[] = await page.evaluate(() => {
-      const sel = '[class*="PostInfoCell"], [class*="content_card"], [data-tt*="components_PostItem"], li[class*="post"], div[class*="ContentCard"], [class*="ContentItem"]';
-      return Array.from(document.querySelectorAll(sel)).map((row) => {
-        const txt = (row as HTMLElement).innerText || '';
-        const d   = row.querySelector('[class*="desc"], [class*="title"], a[href*="/video/"]');
-        const desc = (d && (d as HTMLElement).innerText ? (d as HTMLElement).innerText.trim() : (txt.split('\n')[0] || ''));
-        return { desc, text: txt };
-      });
-    });
+    // Lecture robuste : on parse le TEXTE de la page (pas de sélecteurs CSS
+    // fragiles). Chaque post suit le motif :
+    //   "MM:SS" (durée) → caption → date → privacy → vues → likes → comments
+    const bodyText = await page.locator('body').innerText().catch(() => '');
+    const lines    = bodyText.split('\n').map((l) => l.trim()).filter(Boolean);
 
-    // Parsing des nombres côté Node
+    const durRe = /^\d{1,2}:\d{2}$/;                 // ligne durée (ex "00:05")
+    const numRe = /^[\d.,]+\s*[KMkm]?$/;             // ligne 100% numérique
+
     const stats: PostStat[] = [];
-    for (const r of rawRows) {
-      if (!r.desc) continue;
-      const nums = (r.text.match(/[\d.,]+\s*[KMkm]?/g) || []).map(parseCount);
-      stats.push({
-        desc: r.desc,
-        views:    nums[0] ?? 0,
-        likes:    nums[1] ?? 0,
-        comments: nums[2] ?? 0,
-        shares:   nums[3] ?? 0,
-      });
+    for (let i = 0; i < lines.length; i++) {
+      if (!durRe.test(lines[i])) continue;
+      const desc = lines[i + 1] || '';
+      if (!desc || durRe.test(desc)) continue;
+
+      // Récupère les 3 premières lignes numériques après la caption
+      // (vues, likes, commentaires) — la date et "Everyone" sont ignorées.
+      const nums: number[] = [];
+      for (let j = i + 2; j < lines.length && j < i + 12 && nums.length < 3; j++) {
+        if (durRe.test(lines[j])) break;            // début du post suivant
+        if (numRe.test(lines[j])) nums.push(parseCount(lines[j]));
+      }
+      if (nums.length >= 1) {
+        stats.push({ desc, views: nums[0] ?? 0, likes: nums[1] ?? 0, comments: nums[2] ?? 0, shares: 0 });
+      }
     }
 
     if (stats.length === 0) {
-      // Parsing raté → renvoie un dump pour pouvoir ajuster les sélecteurs
-      const debugText = await page.locator('body').innerText().catch(() => '');
-      return { success: false, stats: [], error: 'Aucune ligne lue', debugText: debugText.slice(0, 2500) };
+      return { success: false, stats: [], error: 'Aucune ligne lue', debugText: bodyText.slice(0, 2500) };
     }
 
     return { success: true, stats };
