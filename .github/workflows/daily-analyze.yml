@@ -1,0 +1,33 @@
+name: Daily TikTok Analyze
+
+# Tourne chaque jour à 15:00 UTC = 17h Belgique (2h AVANT le post de 19h),
+# pour que les apprentissages de la veille améliorent le contenu du jour.
+on:
+  schedule:
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Profil/niche à analyser'
+        required: false
+        default: 'animals'
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Installer les dépendances
+        run: npm ci
+      - name: Installer Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Lire les stats + apprendre
+        run: npm run gh:analyze
+        env:
+          CRON_SECRET:         ${{ secrets.CRON_SECRET }}
+          ADMIN_UPLOAD_SECRET: ${{ secrets.ADMIN_UPLOAD_SECRET }}
+          PROFILE_ID:          ${{ github.event.inputs.profile || 'animals' }}

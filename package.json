@@ -10,7 +10,8 @@
     "lint": "eslint",
     "tiktok:login": "node scripts/tiktok-login.mjs",
     "tiktok:check": "node -e \"const f=require('fs');const p='data/tiktok-session.json';console.log(f.existsSync(p)?'Session TikTok OK':'Pas de session. Lance: npm run tiktok:login')\"",
-    "gh:post": "tsx scripts/gh-post.ts"
+    "gh:post": "tsx scripts/gh-post.ts",
+    "gh:analyze": "tsx scripts/gh-analyze.ts"
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.6",

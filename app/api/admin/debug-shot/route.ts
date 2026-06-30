@@ -23,9 +23,10 @@ export async function GET(req: NextRequest) {
 
   const name  = new URL(req.url).searchParams.get('name') || 'fail';
   const files: Record<string, string> = {
-    nav:    'debug-nav.png',
-    upload: 'debug-upload.png',
-    fail:   'debug-fail.png',
+    nav:       'debug-nav.png',
+    upload:    'debug-upload.png',
+    fail:      'debug-fail.png',
+    analytics: 'debug-analytics.png',
   };
   const file = files[name] ?? 'debug-fail.png';
   const p    = dataPath(file);
