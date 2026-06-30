@@ -58,8 +58,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
-// Wan 2.1 — 9:16 vertical @ 480p ≈ $0.20/vidéo (vs Kling 3.0 4K ≈ $1).
-// Budget : 30 vidéos/mois ≈ $6. Pour repasser sur Kling, remettre l'ancien MODEL_ID.
+// Wan 2.1 — 9:16 vertical @ 720p ≈ $0.40/vidéo (vs 480p ≈ $0.20, Kling 4K ≈ $1).
+// Budget : 30 vidéos/mois ≈ $12. Pour repasser sur Kling, remettre l'ancien MODEL_ID.
 const MODEL_ID = 'fal-ai/wan-t2v';
 const POLL_MAX = 170_000;
 const POLL_INT = 8_000;
@@ -219,13 +219,13 @@ export async function POST(req: NextRequest) {
       updatePublication(profileId, id, { falRequestId: wan2gpJobId });
       console.log(`[agent:${profileId}] Wan2GP job: ${wan2gpJobId}`);
     } else {
-      // fal.ai / Wan 2.1 — 9:16 vertical @ 480p (bon marché pour TikTok)
+      // fal.ai / Wan 2.1 — 9:16 vertical @ 720p (plus net pour TikTok)
       fal.config({ credentials: process.env.FAL_KEY });
       const handle = await fal.queue.submit(MODEL_ID, {
         input: {
           prompt:           videoPrompt,
           aspect_ratio:     '9:16',
-          resolution:       '480p',
+          resolution:       '720p',
           negative_prompt:  'blur, distort, low quality, watermark, text overlay, logo, humans',
           enable_prompt_expansion: true,
         },
