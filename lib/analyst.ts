@@ -52,12 +52,28 @@ export interface AnalystOutput {
   directives: string;
 }
 
+/** Convertit une valeur (string / array / objet) en texte lisible à puces. */
+function toText(v: unknown): string {
+  if (!v) return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) {
+    return v.map((x) => `• ${typeof x === 'string' ? x : Object.values(x as object).join(' — ')}`).join('\n');
+  }
+  if (typeof v === 'object') {
+    return Object.entries(v as Record<string, unknown>)
+      .map(([k, val]) => `• ${k} : ${typeof val === 'string' ? val : JSON.stringify(val)}`)
+      .join('\n');
+  }
+  return String(v);
+}
+
 export function parseAnalystOutput(raw: string): AnalystOutput | null {
   const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   try {
-    const p = JSON.parse(cleaned) as Partial<AnalystOutput>;
-    if (!p.directives) return null;
-    return { diagnostic: p.diagnostic ?? '', directives: p.directives };
+    const p = JSON.parse(cleaned) as Record<string, unknown>;
+    const directives = toText(p.directives);
+    if (!directives) return null;
+    return { diagnostic: toText(p.diagnostic), directives };
   } catch {
     return null;
   }
