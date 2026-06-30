@@ -31,6 +31,11 @@ jobs:
       - name: Installer Chromium (navigateur)
         run: npx playwright install --with-deps chromium
 
+      - name: Installer ffmpeg (pour la musique)
+        run: |
+          ffmpeg -version >/dev/null 2>&1 || sudo apt-get update && sudo apt-get install -y ffmpeg
+          ffmpeg -version | head -1
+
       - name: Générer + Publier sur TikTok
         run: npm run gh:post
         env:

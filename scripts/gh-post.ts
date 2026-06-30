@@ -118,13 +118,21 @@ async function addMusic(videoUrl: string): Promise<string | undefined> {
       '-stream_loop', '-1', '-i', track,
       '-map', '0:v:0', '-map', '1:a:0',
       '-shortest', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k',
+      '-movflags', '+faststart',
       outVid,
-    ], { stdio: 'pipe' });
-    console.log('[gh-post] Musique ajoutée ✓');
+    ], { stdio: ['ignore', 'ignore', 'pipe'] });
+
+    // Vérifie que le fichier de sortie existe bien et n'est pas vide
+    if (!fs.existsSync(outVid) || fs.statSync(outVid).size < 1000) {
+      throw new Error('fichier de sortie ffmpeg vide ou manquant');
+    }
+    console.log(`[gh-post] Musique ajoutée ✓ (${fs.statSync(outVid).size} octets)`);
     return outVid;
   } catch (e) {
-    console.warn('[gh-post] ffmpeg a échoué, post sans musique:', e instanceof Error ? e.message : e);
-    return undefined;
+    // Erreur VISIBLE (le run échoue en rouge) : ffmpeg + sa sortie d'erreur
+    const stderr = (e as { stderr?: Buffer })?.stderr?.toString?.() ?? '';
+    const msg    = e instanceof Error ? e.message : String(e);
+    throw new Error(`ffmpeg/musique a échoué: ${msg} | ${stderr.slice(-400)}`);
   }
 }
 
