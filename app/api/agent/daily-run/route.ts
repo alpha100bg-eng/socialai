@@ -61,7 +61,9 @@ const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
 // Wan 2.1 — 9:16 vertical @ 720p ≈ $0.40/vidéo (vs 480p ≈ $0.20, Kling 4K ≈ $1).
 // Budget : 30 vidéos/mois ≈ $12. Pour repasser sur Kling, remettre l'ancien MODEL_ID.
 const MODEL_ID = 'fal-ai/wan-t2v';
-const POLL_MAX = 170_000;
+// 720p met plus longtemps à générer que 480p → marge large (Railway n'a pas
+// de limite de requête ; GitHub Actions attend jusqu'à 20 min).
+const POLL_MAX = 280_000;
 const POLL_INT = 8_000;
 
 // ─── Groq helper ──────────────────────────────────────────────────────────────
